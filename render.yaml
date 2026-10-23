@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: hackathon-starter-api
+    runtime: node
+    buildCommand: npm ci
+    startCommand: node src/server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CLIENT_URL
+        sync: false
+      - key: MONGODB_URI
+        sync: false
