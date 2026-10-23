@@ -1,0 +1,23 @@
+{
+  "name": "hackathon-starter-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Small Express and MongoDB starter for a MERN hackathon.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "test": "node --test tests/health.test.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "helmet": "^8.0.0",
+    "mongoose": "^8.9.5",
+    "morgan": "^1.10.0"
+  }
+}
