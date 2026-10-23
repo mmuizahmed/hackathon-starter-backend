@@ -16,11 +16,12 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json({ limit: '1mb' }));
 
 if (env.nodeEnv === 'development') {
   app.use(morgan('dev'));
 }
+
+app.use(express.json({ limit: '1mb' }));
 
 app.use('/api', apiRoutes);
 app.use(notFound);

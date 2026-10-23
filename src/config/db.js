@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { env } from './env.js';
 
+// A failed connect emits an "error" event. Log it so Node does not crash the process.
 mongoose.connection.on('error', (error) => {
   console.error(`MongoDB error: ${error.message}`);
 });
@@ -25,7 +26,6 @@ export async function connectDb() {
     console.error(
       'MongoDB: connection failed. The API will keep running and /api/health will report db "disconnected".'
     );
-    console.error(`MongoDB: ${error.message}`);
     await mongoose.disconnect().catch(() => {});
   }
 }
