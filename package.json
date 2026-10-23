@@ -5,7 +5,7 @@
   "description": "Small Express and MongoDB starter for a MERN hackathon.",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22 <23"
   },
   "scripts": {
     "dev": "node --watch src/server.js",

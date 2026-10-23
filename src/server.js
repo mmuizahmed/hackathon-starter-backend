@@ -1,11 +1,12 @@
+import 'dotenv/config';
 import app from './app.js';
 import { connectDb } from './config/db.js';
 import { env } from './config/env.js';
 
 await connectDb();
 
-const server = app.listen(env.port, () => {
-  console.log(`API listening on port ${env.port} (${env.nodeEnv})`);
+const server = app.listen(env.port, '0.0.0.0', () => {
+  console.log(`API listening on 0.0.0.0:${env.port} (${env.nodeEnv})`);
 });
 
 server.on('error', (error) => {

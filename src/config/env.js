@@ -1,7 +1,3 @@
-import dotenv from 'dotenv';
-
-dotenv.config();
-
 const NODE_ENVS = ['development', 'test', 'production'];
 
 function parseEnv() {

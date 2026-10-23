@@ -6,7 +6,7 @@ It does not include assignment features. Add those with the recipe at the bottom
 
 ## Setup
 
-1. Install [Node.js 20](https://nodejs.org/) or newer.
+1. Install [Node.js 22](https://nodejs.org/). The app allows any 22.x release (`>=22 <23` in `package.json`).
 2. Install dependencies:
 
 ```bash
@@ -64,7 +64,7 @@ Copy names from `.env.example`. Do not commit `.env`.
 
 | Command | What it does |
 | --- | --- |
-| `npm run dev` | Starts the API and restarts it when you change a file (`node --watch`). |
+| `npm run dev` | Starts the API with `node --watch`. Editing a source file restarts it. Changing `.env` does not; stop the process and run `npm run dev` again. |
 | `npm start` | Starts the API once. Use this in production. |
 | `npm test` | Runs the health-check test. No database required. |
 
@@ -88,10 +88,10 @@ Unknown routes return `404` with that error shape. A controller can set `error.s
 
 ```text
 src/
-  server.js                 starts the process and connects to MongoDB
+  server.js                 loads .env, starts the process, connects to MongoDB
   app.js                    Express app: security, JSON, routes, errors
   config/
-    env.js                  loads and checks environment variables
+    env.js                  checks environment variables
     db.js                   MongoDB connection
   routes/
     index.js                mount new routers here
@@ -114,8 +114,8 @@ A request goes through `app.js`, then a router, then a controller. The controlle
 
 `render.yaml` describes a Node web service:
 
-- Build command: `npm install`
-- Start command: `npm start`
+- Build command: `npm ci`
+- Start command: `node src/server.js` (Node receives the stop signal on redeploy)
 - Health check path: `/api/health`
 
 Steps:
@@ -163,7 +163,7 @@ export const listNotes = asyncHandler(async (req, res) => {
 });
 
 export const createNote = asyncHandler(async (req, res) => {
-  const title = req.body?.title;
+  const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
   if (!title) {
     const error = new Error('Title is required');
     error.statusCode = 400;
@@ -189,12 +189,19 @@ router.post('/', createNote);
 export default router;
 ```
 
-In `src/routes/index.js`:
+Replace `src/routes/index.js` with the whole file below. The health route stays mounted.
 
 ```javascript
+import { Router } from 'express';
+import healthRoutes from './health.routes.js';
 import noteRoutes from './note.routes.js';
 
+const router = Router();
+
+router.use(healthRoutes);
 router.use('/notes', noteRoutes);
+
+export default router;
 ```
 
 Restart `npm run dev`. The paths are `GET /api/notes` and `POST /api/notes`.

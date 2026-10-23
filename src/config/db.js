@@ -1,9 +1,13 @@
 import mongoose from 'mongoose';
 import { env } from './env.js';
 
+function redactCredentials(message) {
+  return String(message).replace(/\/\/([^@\s/]+)@/g, '//***@');
+}
+
 // A failed connect emits an "error" event. Log it so Node does not crash the process.
 mongoose.connection.on('error', (error) => {
-  console.error(`MongoDB error: ${error.message}`);
+  console.error(`MongoDB error: ${redactCredentials(error.message)}`);
 });
 
 export function getDbStatus() {
