@@ -2,7 +2,7 @@
   "name": "hackathon-starter-backend",
   "version": "1.0.0",
   "private": true,
-  "description": "HCM Lite API. This revision covers setup, auth, organization, employees, attendance, and the audit log.",
+  "description": "HCM Lite API. Setup, auth, organization, employees, attendance, leave, payroll, payslips, announcements, and notifications.",
   "type": "module",
   "engines": {
     "node": ">=22 <23"
@@ -24,6 +24,7 @@
     "mongoose": "^8.9.5",
     "morgan": "^1.10.0",
     "multer": "^2.5.0",
+    "pdfkit": "^0.17.2",
     "zod": "^4.6.7"
   },
   "devDependencies": {

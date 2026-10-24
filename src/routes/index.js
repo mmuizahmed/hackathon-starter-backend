@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import announcementRoutes from './announcement.routes.js';
 import attendanceRoutes from './attendance.routes.js';
 import auditRoutes from './audit.routes.js';
 import authRoutes from './auth.routes.js';
@@ -7,7 +8,12 @@ import designationRoutes from './designation.routes.js';
 import employeeRoutes from './employee.routes.js';
 import healthRoutes from './health.routes.js';
 import holidayRoutes from './holiday.routes.js';
+import leaveRoutes from './leave.routes.js';
 import leaveTypeRoutes from './leaveType.routes.js';
+import notificationRoutes from './notification.routes.js';
+import payrollRoutes from './payroll.routes.js';
+import payslipRoutes from './payslip.routes.js';
+import salaryStructureRoutes from './salaryStructure.routes.js';
 import settingsRoutes from './settings.routes.js';
 import setupRoutes from './setup.routes.js';
 import userRoutes from './user.routes.js';
@@ -18,7 +24,6 @@ router.use(healthRoutes);
 router.use('/setup', setupRoutes);
 router.use('/auth', authRoutes);
 router.use('/audit', auditRoutes);
-// Settings, org, people, and attendance. Leave and payroll mounts belong to the other backend.
 router.use('/settings', settingsRoutes);
 router.use('/departments', departmentRoutes);
 router.use('/designations', designationRoutes);
@@ -27,5 +32,11 @@ router.use('/holidays', holidayRoutes);
 router.use('/users', userRoutes);
 router.use('/employees', employeeRoutes);
 router.use('/attendance', attendanceRoutes);
+router.use('/leave', leaveRoutes);
+router.use('/salary-structures', salaryStructureRoutes);
+router.use('/payroll', payrollRoutes);
+router.use('/payslips', payslipRoutes);
+router.use('/announcements', announcementRoutes);
+router.use('/notifications', notificationRoutes);
 
 export default router;

@@ -45,8 +45,8 @@ Passwords are 8 to 72 characters. bcrypt only uses the first 72 bytes.
 | 400 | Validation, or the current password is wrong on change-password |
 | 401 | Missing or bad cookie, or wrong login password. Message: `Authentication required` or `Invalid email or password` |
 | 403 | `Account is deactivated`, `Password change required`, `You do not have access to this resource`, `You can only access your own records`, `You can only change your phone and address` |
-| 409 | Setup already done, `Already checked in today`, a duplicate unique field, or deleting a department, designation, or leave type that is still in use |
-| 422 | Camera check-in rejected. Leave overlap or not enough balance is still planned |
+| 409 | Setup already done, `Already checked in today`, a duplicate unique field, deleting a department, designation, or leave type that is still in use, a leave request that was already reviewed, or any edit of a finalized payroll run |
+| 422 | Camera check-in rejected, leave overlap, not enough leave balance, a range with no working days, or payroll checks that failed |
 | 429 | Login rate limit. Message: `Too many login attempts. Try again later.` |
 
 Login allows 10 attempts per 15 minutes per IP.
@@ -80,7 +80,7 @@ Public user:
 
 ## Implemented in this revision
 
-Auth, organization, employees, and attendance. Leave requests, payroll, dashboards, AI, announcements, and notifications are still planned.
+Auth, organization, employees, attendance, leave, payroll, payslips, announcements, and notifications. Dashboards and AI are still planned.
 
 | Method | Path | Who |
 | --- | --- | --- |
@@ -111,6 +111,42 @@ Auth, organization, employees, and attendance. Leave requests, payroll, dashboar
 | GET, POST | `/api/attendance/corrections` | GET: all three roles. POST: HR, employee |
 | POST | `/api/attendance/corrections/:id/review` | HR |
 | GET | `/api/audit` | Admin |
+| GET | `/api/leave/balances` | Own, or admin/HR with `employeeId` |
+| GET | `/api/leave/requests` | Admin and HR: all. Employee: own |
+| POST | `/api/leave/requests` | Employee, or HR with an employee profile |
+| POST | `/api/leave/requests/:id/cancel` | The owner |
+| POST | `/api/leave/requests/:id/review` | HR |
+| GET | `/api/salary-structures` | Admin, HR |
+| PUT | `/api/salary-structures/:employeeId` | HR |
+| POST | `/api/payroll/runs` | HR |
+| GET | `/api/payroll/runs` | Admin, HR |
+| GET | `/api/payroll/runs/:id` | Admin, HR |
+| GET | `/api/payroll/runs/:id/checks` | Admin, HR |
+| POST | `/api/payroll/runs/:id/finalize` | Admin |
+| GET | `/api/payslips` | Admin and HR: all. Employee: own |
+| GET | `/api/payslips/:id` | Same scope |
+| GET | `/api/payslips/:id/pdf` | Same scope. `application/pdf` |
+| GET | `/api/announcements` | Any logged-in user |
+| POST | `/api/announcements` | Admin, HR |
+| PATCH | `/api/announcements/:id` | Admin, HR |
+| GET | `/api/notifications` | Own |
+| GET | `/api/notifications/unread-count` | Own |
+| POST | `/api/notifications/:id/read` | Own |
+| POST | `/api/notifications/read-all` | Own |
+
+### Contract notes for leave and payroll
+
+- Leave balance items add `pending`. Pending does not reduce `remaining`. `GET /api/leave/balances` returns `{ year, employeeId, items }`.
+- The owner can cancel while the request is `pending`, or while it is `approved` and `startDate` is after today in Asia/Karachi.
+- Rejecting leave requires `comment`.
+- HR and admin leave rows include `context` (balance before and after, holidays in the range, colleagues in the same department who already have approved leave on those dates, and this employee's approved leave that starts in the same year). Employee responses omit `context`.
+- Salary `allowances` may be omitted. The server then stores HRA at 40% of basic, medical at 10%, and other at 0.
+- `POST /api/payroll/runs` creates the month or regenerates the draft. A finalized month is `409`.
+- `GET /api/payroll/runs/:id/checks` is the pre-finalize list. Finalize is `422` until those lists are empty, unless the body is `{ "override": true, "reason": "..." }`. The reason is stored on the audit row.
+- Payslip `breakdown` keeps the keys below and adds `lines`. Each deduction line has the inputs, for example `{ "label": "Absent deduction", "days": 1, "perDay": 6818.18, "amount": 6818.18 }`.
+- For a full month, top-level `gross` is the monthly structure. For a joiner or leaver it is the prorated gross actually paid. `inputs.grossMonthly` is always the full structure.
+- The structure that covers the last day of the month is the one payroll uses. A raise dated next month does not change this month's draft.
+- `GET /api/notifications` adds `unreadCount`. `GET /api/notifications/unread-count` returns `{ "count": 0 }`.
 
 ## Role rules used for the planned routes
 
@@ -520,9 +556,13 @@ Attendance item:
 
 `04:05Z` is 09:05 in Karachi.
 
-## M5 Leave — planned
+## M5 Leave — implemented
 
-Working days only. Skip the weekend list and holidays (tentative included). Overlap with another pending or approved request, or days over the remaining balance, is `422`. Unpaid has no cap. Balance is `yearlyQuota - approved days` for the Karachi calendar year. Pending days do not reduce the balance until approved. Cancel is allowed only while `pending`.
+Working days only. Skip the weekend list and holidays (tentative included). The stored `days` is that count. Later edits to the weekend do not rewrite it. Overlap with the same employee's pending or approved request, or days over the remaining balance, is `422` with a message that names the other dates or the remaining days. A range that is only weekend and holidays is `422` `The selected dates contain no working days`. Unpaid has no cap. Balance is `yearlyQuota - approved days` for requests whose start date is in that Karachi calendar year. Pending days do not reduce the balance until approved, and they are returned separately as `pending`.
+
+Cancel is allowed for the owner only. A `pending` request can be cancelled. An `approved` request can be cancelled when `startDate` is after today in Asia/Karachi. A started or past approved request is `422`.
+
+Reject requires `comment`. Approve may send an empty comment. Reviewing a request that is not `pending` is `409`. Approval checks overlap and balance again, because another request may have been approved in between. The employee gets a notification. `leave.apply`, `leave.cancel`, and `leave.review` are audited.
 
 | Method | Path | Who |
 | --- | --- | --- |
@@ -534,9 +574,47 @@ Working days only. Skip the weekend list and holidays (tentative included). Over
 
 Create body: `{ leaveTypeId, startDate, endDate, reason }`. The server calculates `days`. Do not trust a day count from the client.
 
-Balance item: `{ code, name, paid, quota, used, remaining }`. Unpaid: `quota` and `remaining` are null.
+Balance response:
 
-## M6 Payroll — planned
+```json
+{ "year": 2026, "employeeId": "…", "items": [{ "code": "ANNUAL", "name": "Annual", "paid": true, "quota": 14, "used": 0, "pending": 1, "remaining": 14 }] }
+```
+
+Unpaid: `quota` and `remaining` are null. `remaining` ignores `pending`.
+
+Leave list item:
+
+```json
+{
+  "id": "…",
+  "employeeId": "…",
+  "employeeName": "Eva",
+  "employeeCode": "E-001",
+  "departmentId": "…",
+  "leaveType": { "id": "…", "code": "CASUAL", "name": "Casual", "paid": true },
+  "startDate": "2026-10-30",
+  "endDate": "2026-11-02",
+  "days": 1,
+  "reason": "Family event",
+  "status": "pending",
+  "reviewComment": "",
+  "reviewedAt": null,
+  "reviewedBy": null,
+  "createdAt": "2026-10-24T12:00:00.000Z",
+  "context": {
+    "balance": { "quota": 10, "used": 0, "pending": 0, "remaining": 10, "before": 10, "after": 9 },
+    "holidays": [{ "date": "2026-11-02", "name": "Test holiday", "tentative": true }],
+    "colleaguesOnLeave": [{ "employeeId": "…", "name": "Ali", "startDate": "2026-10-30", "endDate": "2026-11-02", "days": 1, "code": "SICK" }],
+    "approvedThisYear": [{ "id": "…", "code": "ANNUAL", "startDate": "2026-03-02", "endDate": "2026-03-03", "days": 2 }]
+  }
+}
+```
+
+`context` is only present for admin and HR. `balance.pending` is other pending requests of this type, not this one. `balance.before` is the remaining balance without this request. `balance.after` is what remains if this request is approved. `colleaguesOnLeave` is approved leave for other people in the same department whose dates overlap this request.
+
+Filters on `GET /api/leave/requests`: `status`, `employeeId`, `departmentId`, `from`, `to`, `page`, `limit`. `from` and `to` keep requests that overlap that range.
+
+## M6 Payroll — implemented
 
 Gross = basic + hra + medical + other. The standard structure HR should save is hra = 40% of basic, medical = 10%, other = 0, so gross = 1.5 × basic. If HR typed different allowance amounts, use the stored amounts.
 
@@ -545,11 +623,12 @@ One active salary structure per employee. Older rows stay with `active: false`.
 | Method | Path | Who |
 | --- | --- | --- |
 | GET | `/api/salary-structures` | Admin, HR. `?employeeId` |
-| PUT | `/api/salary-structures/:employeeId` | HR. Body `{ basic, allowances: { hra, medical, other }, effectiveFrom }` |
-| POST | `/api/payroll/runs` | HR. Body `{ "month": "2026-10" }`. One run per month |
+| PUT | `/api/salary-structures/:employeeId` | HR. Body `{ basic, effectiveFrom, allowances? }`. Omitted allowances are derived: HRA 40% of basic, medical 10%, other 0. The previous active row is kept with `active: false` |
+| POST | `/api/payroll/runs` | HR. Body `{ "month": "2026-10" }`. Creates the draft, or replaces payslips when the draft already exists. `409` if that month is finalized |
 | GET | `/api/payroll/runs` | Admin, HR |
-| GET | `/api/payroll/runs/:id` | Admin, HR. Includes payslip summaries |
-| POST | `/api/payroll/runs/:id/finalize` | Admin. Locks the run. A second finalize or any edit after this is 409 |
+| GET | `/api/payroll/runs/:id` | Admin, HR. Includes payslips and their breakdowns |
+| GET | `/api/payroll/runs/:id/checks` | Admin, HR. Safe to call before finalize |
+| POST | `/api/payroll/runs/:id/finalize` | Admin. Body `{ "override": false }` or `{ "override": true, "reason": "…" }`. Locks the run. A second finalize or regenerate is 409 |
 | GET | `/api/payslips` | Admin and HR: all. Employee: own. `?month&employeeId&page&limit` |
 | GET | `/api/payslips/:id` | Same scope |
 | GET | `/api/payslips/:id/pdf` | Same scope. `application/pdf` |
@@ -636,7 +715,27 @@ Every payslip stores this `breakdown`. Top-level `gross`, `deductions`, `tax`, a
 
 `net` = prorated earnings − deduction total − prorated monthly tax. In the example there is no proration, one absent day, and a full month of tax: 150,000 − 6,818.18 − 10,000.
 
-A finalized run sets `status: "finalized"`, `finalizedBy`, and `finalizedAt`. Draft totals live on the run: `{ employees, gross, deductions, tax, net }`.
+`breakdown.lines` repeats those amounts with the inputs used for each line (days, per-day rate, slab formula). The PDF prints the same lines. `inputs` also includes `lateArrivals` (the late flag, used for the penalty) and `missingCheckoutDays`. `lateDays` is the count of status `late`.
+
+Attendance for the run is not a stored status of `absent`. `summarizeEmployeeAttendance` uses the same day rules as the attendance board. A stored row wins (`half_day` and the `late` flag come from it). A past open check-in is `missing_checkout` even when the stored status is still `present`. With no row, approved leave is on leave: unpaid leave is deducted, paid leave is not. A past working day with neither is absent. Days after today are not absences, so a draft run in the middle of the month does not deduct the rest of the month. `missing_checkout` is paid, but it blocks finalize until it is resolved.
+
+The salary row is the one whose `effectiveFrom` / `effectiveTo` covers the last day of the month. People with no such row are omitted from the payslips and listed in the checks.
+
+Checks response:
+
+```json
+{
+  "ok": false,
+  "missingSalary": [{ "employeeId": "…", "name": "Noor", "code": "E-003" }],
+  "missingCheckouts": [{ "attendanceId": "…", "employeeId": "…", "name": "Eva", "date": "2026-10-09" }],
+  "pendingLeave": [{ "id": "…", "employeeId": "…", "name": "Eva", "startDate": "2026-10-26", "endDate": "2026-10-26" }],
+  "pendingCorrections": [{ "id": "…", "employeeId": "…", "name": "Eva", "date": "2026-10-08" }]
+}
+```
+
+A failed finalize is `422` with `errors` pointing at those lists. `override: true` without `reason` is `400`. A successful override writes `payroll.finalize` with the reason. Each employee who received a payslip gets a notification. Generating a draft writes `payroll.generate`. Saving a structure writes `salary.update`.
+
+A finalized run sets `status: "finalized"`, `finalizedBy`, and `finalizedAt`. Draft totals live on the run: `{ employees, gross, deductions, tax, net }`. `employees` counts payslips, not people who were skipped for a missing structure.
 
 ## M7 Dashboards — planned
 
@@ -788,11 +887,11 @@ Admin only. Query: `page`, `limit`, `action`, `entity`, `entityId`, `actor` (use
 
 There is no POST, PATCH, or DELETE. Services call `recordAudit` in `src/services/audit.service.js`.
 
-Actions written today: `setup.complete`, `user.create`, `user.update`, `user.password_change`, `settings.update`, `department.create`, `department.update`, `department.delete`, `designation.create`, `designation.update`, `designation.delete`, `leaveType.create`, `leaveType.update`, `leaveType.delete`, `holiday.create`, `holiday.update`, `holiday.delete`, `employee.create`, `employee.update`, `attendance.check_in`, `attendance.check_out`, `attendanceCorrection.create`, `attendanceCorrection.review`.
+Actions written today: `setup.complete`, `user.create`, `user.update`, `user.password_change`, `settings.update`, `department.create`, `department.update`, `department.delete`, `designation.create`, `designation.update`, `designation.delete`, `leaveType.create`, `leaveType.update`, `leaveType.delete`, `holiday.create`, `holiday.update`, `holiday.delete`, `employee.create`, `employee.update`, `attendance.check_in`, `attendance.check_out`, `attendanceCorrection.create`, `attendanceCorrection.review`, `leave.apply`, `leave.cancel`, `leave.review`, `salary.update`, `payroll.generate`, `payroll.finalize`, `announcement.create`, `announcement.update`.
 
-Later modules should add `leave.review` and `payroll.finalize`, with `before` and `after` snapshots and no password hashes. Temporary passwords are not written to the log.
+`payroll.finalize` stores `override` and `reason` when Admin locked a month that failed the checks. Temporary passwords are not written to the log. Snapshots do not include password hashes.
 
-### Announcements — planned
+### Announcements — implemented
 
 | Method | Path | Who |
 | --- | --- | --- |
@@ -802,9 +901,13 @@ Later modules should add `leave.review` and `payroll.finalize`, with `before` an
 
 Item: `{ id, title, body, audience, active, createdBy: { id, name }, createdAt }`.
 
-### Notifications — planned
+### Notifications — implemented
 
-Created by leave review and by payroll finalize. The user only sees rows with their login id.
+Created by leave review and by payroll finalize. Other services call `notify` in `src/services/notification.service.js`. The user only sees rows with their login id. A missing id is `404`, including when the row belongs to someone else.
+
+`GET /api/notifications` adds `unreadCount` next to `items`, `total`, `page`, and `limit`.
+
+`GET /api/notifications/unread-count` returns `{ "count": 1 }`.
 
 | Method | Path | Who |
 | --- | --- | --- |

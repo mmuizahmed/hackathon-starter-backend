@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assertOwnEmployee, employeeScopeFilter } from '../src/services/scope.service.js';
+import { assertOwnEmployee, assertRole, employeeScopeFilter } from '../src/services/scope.service.js';
 
 test('employees can only match their own employee id', () => {
   const employee = { role: 'employee', employeeId: 'emp-1' };
@@ -22,6 +22,11 @@ test('admin and HR are not scoped to one employee', () => {
   const hr = { role: 'hr', employeeId: null };
   assert.deepEqual(employeeScopeFilter(hr), {});
   assert.doesNotThrow(() => assertOwnEmployee(hr, 'emp-2'));
+});
+
+test('assertRole uses the same 403 as the route guard', () => {
+  assert.doesNotThrow(() => assertRole({ role: 'hr' }, 'admin', 'hr'));
+  assert.throws(() => assertRole({ role: 'employee' }, 'hr'), (error) => error.statusCode === 403);
 });
 
 test('an employee login with no profile matches nothing', () => {
