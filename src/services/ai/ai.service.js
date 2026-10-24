@@ -100,7 +100,12 @@ export async function chat(user, input) {
       try {
         result = await runTool(user, name, args);
       } catch (error) {
-        result = { refused: true, message: error.message || 'Tool failed' };
+        // AppError text is written for the user. Other errors can carry a
+        // driver message or a stack, so the model and the client see neither.
+        const message = error?.statusCode && error.statusCode < 500
+          ? error.message
+          : 'That request could not be completed.';
+        result = { refused: true, message };
       }
       sources.push({ tool: name, args, resultSummary: summarizeToolResult(result) });
       messages.push({

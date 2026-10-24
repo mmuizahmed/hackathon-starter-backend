@@ -223,6 +223,45 @@ test('org, employees, and attendance', { timeout: 180000 }, async (t) => {
       const annual = self.json.data.leaveBalances.find((row) => row.code === 'ANNUAL');
       assert.equal(annual.quota, 14);
       assert.equal(annual.remaining, 14);
+
+      const escalate = await request(base, `/api/employees/${state.eva.id}`, {
+        method: 'PATCH',
+        cookie: state.evaCookie,
+        body: {
+          phone: '03001234567',
+          basicSalary: 1,
+          role: 'admin',
+          email: 'admin@example.com',
+        },
+      });
+      assert.equal(escalate.status, 403);
+      assert.equal(escalate.json.message, 'You can only change your phone and address');
+
+      const idor = await request(base, `/api/employees/${state.omar.id}`, {
+        method: 'PATCH',
+        cookie: state.evaCookie,
+        body: { phone: '000' },
+      });
+      assert.equal(idor.status, 403);
+      const otherAttendance = await request(base, `/api/attendance?employeeId=${state.omar.id}`, {
+        cookie: state.evaCookie,
+      });
+      assert.equal(otherAttendance.status, 403);
+      const otherPayslips = await request(base, `/api/payslips?employeeId=${state.omar.id}`, {
+        cookie: state.evaCookie,
+      });
+      assert.equal(otherPayslips.status, 403);
+
+      const contact = await request(base, `/api/employees/${state.eva.id}`, {
+        method: 'PATCH',
+        cookie: state.evaCookie,
+        body: { phone: '03001234567', address: 'Street 1' },
+      });
+      assert.equal(contact.status, 200, JSON.stringify(contact.json));
+      assert.equal(contact.json.data.phone, '03001234567');
+      assert.equal(contact.json.data.address, 'Street 1');
+      assert.equal(contact.json.data.salary.basic, 100000);
+      assert.equal(contact.json.data.email, 'eva@example.com');
     });
 
     await t.test('camera check-in is rejected for face, accuracy, and distance', async () => {

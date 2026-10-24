@@ -10,6 +10,7 @@ import { AppError } from '../utils/AppError.js';
 import { idString, isObjectId } from '../utils/ids.js';
 import { pageData, readPage } from '../utils/page.js';
 import { karachiDateString } from '../utils/timezone.js';
+import { wasEmployedOn } from './attendance.service.js';
 import { summarizeEmployeeAttendance } from './attendanceSummary.service.js';
 import { recordAudit } from './audit.service.js';
 import { listWorkingDays } from './calendar.service.js';
@@ -58,7 +59,11 @@ async function peopleInMonth(periodStart, periodEnd) {
   for (const employee of employees) {
     const bounds = employedBounds(employee, periodStart, periodEnd);
     if (!bounds) continue;
-    const employedDays = monthDays.filter((day) => day >= bounds.start && day <= bounds.end);
+    // wasEmployedOn also drops "exited" with no exit date. Headcount already
+    // ignores those rows; payroll must not pay them for the whole month.
+    const employedDays = monthDays.filter(
+      (day) => day >= bounds.start && day <= bounds.end && wasEmployedOn(employee, day),
+    );
     if (employedDays.length === 0) continue;
     people.push({ employee, ...bounds, employedWorkingDays: employedDays.length });
   }
@@ -70,7 +75,7 @@ async function structureCovering(employeeId, periodEnd) {
     employee: employeeId,
     effectiveFrom: { $lte: periodEnd },
     $or: [{ effectiveTo: null }, { effectiveTo: { $gte: periodEnd } }],
-  }).sort({ effectiveFrom: -1 });
+  }).sort({ effectiveFrom: -1, _id: -1 });
 }
 
 function personName(employee) {
