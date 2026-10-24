@@ -9,14 +9,14 @@ src/server.js            starts the process and, if the env admin is set, runs s
 src/app.js               helmet, CORS, JSON, cookie, then the two auth middlewares, then routes
 src/routes/              URL to controller
 src/controllers/         read the request, call one service, send JSON
-src/services/            rules: setup, org, employees, attendance, leave, payroll, notifications, audit
+src/services/            rules: setup, org, employees, attendance, leave, payroll, analytics, AI, notifications, audit
 src/models/              MongoDB collections
 src/middleware/          cookie user, password gate, role check, validation, errors
 src/utils/timezone.js    Asia/Karachi dates. Use this. Do not parse dates in a route.
 src/services/calendar.service.js   isWorkingDay, countWorkingDays, listWorkingDays
 ```
 
-A new feature should add a route, a thin controller, and a service. The service is the part the AI assistant will call later, with the same user that `requireAuth` put on the request.
+A new feature should add a route, a thin controller, and a service. The AI tools call those services with the same user that `requireAuth` put on the request.
 
 ## Request lifecycle
 
@@ -112,7 +112,7 @@ Store business dates as `YYYY-MM-DD` strings from `src/utils/timezone.js`. Pakis
 - `countWorkingDays('2026-10-24', '2026-10-27')`
 - `listWorkingDays('2026-10-24', '2026-10-27')`
 
-It loads the company weekend and the holidays in that range. A tentative holiday is still a day off. Leave and payroll should import these functions instead of repeating the rule.
+It loads the company weekend and the holidays in that range. A tentative holiday is still a day off. Leave, payroll, and analytics import these functions instead of repeating the rule.
 
 ## Check-in
 
@@ -126,9 +126,29 @@ One employee, one Karachi day. The second check-in is `409` `Already checked in 
 
 The same check-in route accepts `source: "camera"` with `lat`, `lng`, `accuracy`, and `faceCount`. The server rejects a face count other than 1, accuracy worse than 100 meters, or a Haversine distance outside `settings.radiusMeters`. The stored row keeps the coordinates and the distance. It does not keep a photo. A rejected camera call does not insert a row.
 
-## What is not built
+## Analytics
 
-Dashboards and the AI chat. Leave, salary structures, payroll, payslips, announcements, and notifications are in this revision. The AI module must call these services with `req.user`. It must not query MongoDB with its own rules, and it must not see `AI_API_KEY` in the browser.
+`src/services/analytics.service.js` is the company, HR, and personal dashboard. Routes are `GET /api/analytics/admin`, `/hr`, and `/me`. The planned names were `/api/dashboards/*`.
+
+Attendance totals call `summarizeEmployeeAttendance`. That is the same function payroll uses, so the three screens cannot disagree about a late half day or a missing check-out. Leave utilization calls `listLeaveRequests` and `listLeaveTypes`. Payroll cost calls `listPayslips`. The personal card calls `getLeaveBalances` and `listPayslips`.
+
+`src/services/insights.service.js` is the bonus. Bradford Factor and the Monday/Friday and holiday-adjacent flags need the order of days, so they use `loadClassifiedDays`. The attrition-risk score is a fixed point list. It is not a trained model. Its late rate and unpaid days still come from `getAttendanceSummary`.
+
+## AI assistant
+
+`POST /api/ai/chat` is the only place the model runs. The browser never sees `AI_API_KEY`.
+
+1. `guardedAi` counts this user's `aiLogs` rows in the last hour. At the limit it returns 429 `Too many AI requests. Try again in an hour.` and still writes a log row.
+2. `chat` sends the system prompt (policy rules plus live settings and leave types) and the user's messages to an OpenAI-compatible chat completions endpoint. The default base URL is Gemini.
+3. If the model returns `tool_calls`, `runTool` runs at most four of them. Each tool calls a service that already exists: headcount, attendance summary, late comers, leave summary, leave balances, payroll summary, or employee search. The user object is the one from the cookie.
+4. If the arguments include `employeeId`, `assertOwnEmployee` runs first. A refusal becomes `{ refused: true, message }` and is appended as a tool message. The hidden salary is not loaded.
+5. The model may do this for 3 rounds. Then one last completion runs with tools turned off.
+6. The JSON answer adds `sources` (tool name, args, a short result summary), `tools`, `aiGenerated: true`, and `label: "AI-generated"`.
+7. `writeAiLog` stores the feature, the user text, the tool names, the answer, and how long it took.
+
+`POST /api/ai/smart-leave` asks for JSON, checks it with zod against the live leave-type codes, retries once, and returns `fallback: true` if it still fails. It does not insert a `LeaveRequest`. `POST /api/ai/explain-payslip` calls `getPayslip` before the model sees the slip. `POST /api/ai/summary` may only talk about the `kpis` object in the body. `POST /api/ai/policy` uses the same written rules as the chat prompt.
+
+A timeout, a provider error, or a missing key is HTTP 200 with a short fallback sentence. `403` and `429` stay errors.
 
 ## Leave and payroll
 
@@ -162,7 +182,7 @@ Ali joins on 15 October 2026. October still has 22 working days, but he is emplo
 
 HR can build the draft while data is still messy. `GET /api/payroll/runs/:id/checks` lists four problems: no salary structure covering the month end, a missing check-out, pending leave that overlaps the month, and a pending attendance correction in the month. Admin finalize returns `422` until those lists are empty. Admin can send `override: true` and a reason. That reason is the audit `after.reason`. HR cannot finalize (`403`). After `finalized`, regenerate returns `409`. Each payslip then notifies that employee's login.
 
-`summarizeEmployeeAttendance(employeeId, from, to)` is the attendance count used above. It follows the attendance board: a stored row wins, approved leave covers a day with no row, and a day after today is not an absence yet. Dashboards should call it instead of inventing a second definition of absent.
+`summarizeEmployeeAttendance(employeeId, from, to)` is the attendance count used above, and the one analytics and the AI attendance tools use. It follows the attendance board: a stored row wins, approved leave covers a day with no row, and a day after today is not an absence yet.
 
 ### Interview questions
 
@@ -228,5 +248,11 @@ They are Karachi calendar days. Timestamps alone shift the day when the server i
 **What if `JWT_SECRET` is missing?**
 The process exits before it listens, with `Configuration error:`. Render already has this variable set.
 
-**How will the AI follow roles?**
-The chat route will take `req.user` and call the same services. An employee asking for a colleague's salary hits the scope helper and is refused. The model never gets a MongoDB connection string.
+**How does the AI follow roles?**
+The chat route takes `req.user` and calls the same services as the REST routes. `runTool` calls `assertOwnEmployee` before `getPayrollSummary` or `getPayslip`. An employee who asks for a colleague's salary gets `You can only access your own records`. That sentence is what the model sees. The payslip is never loaded, so the number cannot leak into the prompt. The model has no MongoDB connection string, and `AI_API_KEY` stays in `env` on the server.
+
+**Why can't the assistant invent a colleague's salary?**
+Scope runs in code, before the tool result is built. The system prompt also says to stop when a tool refuses, but the prompt is not the lock. Even a model that ignores the prompt only receives `{ refused: true }`.
+
+**Why is the Bradford list not machine learning?**
+Each flag is a rule you can read out loud: spells squared times days, Monday or Friday share, or days next to a holiday. The attrition score adds 25, 25, 25, 15, and 10 for the five drivers and stops at 100. There is no trained model and no hidden weight.

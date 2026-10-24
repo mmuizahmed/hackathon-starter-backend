@@ -48,6 +48,15 @@ export function displayStatus(row, today) {
   return row.status;
 }
 
+// One place for the day label. Analytics and the calendar both call this.
+// A stored row wins. Otherwise approved leave, then absent on a working day up to today.
+export function attendanceDayStatus({ row, onLeave, workingDay, date, today }) {
+  if (row) return displayStatus(row, today);
+  if (onLeave) return 'on_leave';
+  if (workingDay && date <= today) return 'absent';
+  return null;
+}
+
 function toAttendance(row, today) {
   const employeeId = row.employee?._id ? row.employee._id.toString() : row.employee.toString();
   return {
@@ -246,7 +255,7 @@ export async function listAttendance(actor, query, today = karachiDateString()) 
   return pageData(visible.slice(skip, skip + limit), visible.length, page, limit);
 }
 
-function employedOn(employee, date) {
+export function wasEmployedOn(employee, date) {
   if (employee.joinDate && employee.joinDate > date) return false;
   if (employee.exitDate && employee.exitDate < date) return false;
   if (employee.status === 'exited' && !employee.exitDate) return false;
@@ -283,12 +292,13 @@ function resolveDay(employee, date, facts, today) {
   const row = facts.attendanceByKey.get(key);
   const onLeave = coveredByLeave(facts.leaveByEmployee.get(String(employee._id)), date);
   const workingDay = facts.working.has(date);
+  const status = attendanceDayStatus({ row, onLeave, workingDay, date, today });
   if (row) {
     const view = toAttendance(row, today);
     return {
       date,
       workingDay,
-      status: view.status,
+      status,
       late: view.late,
       checkIn: view.checkIn,
       checkOut: view.checkOut,
@@ -296,12 +306,23 @@ function resolveDay(employee, date, facts, today) {
       attendanceId: view.id,
     };
   }
-  if (onLeave) {
-    return emptyDay(date, workingDay, 'on_leave');
-  }
-  // Today and earlier with no row are absent. Later days stay blank so the calendar is not full of absences.
-  if (workingDay && date <= today) return emptyDay(date, true, 'absent');
-  return emptyDay(date, workingDay, null);
+  return emptyDay(date, workingDay, status);
+}
+
+// Analytics reuses this instead of a second copy of the absent / leave / missing-checkout rules.
+export async function loadClassifiedDays(employees, start, end, today = karachiDateString()) {
+  const facts = await dayFacts(employees.map((employee) => employee._id), start, end);
+  return employees.map((employee) => {
+    const days = [];
+    let cursor = start;
+    while (cursor <= end) {
+      if (wasEmployedOn(employee, cursor)) {
+        days.push(resolveDay(employee, cursor, facts, today));
+      }
+      cursor = addDays(cursor, 1);
+    }
+    return { employee, days };
+  });
 }
 
 function emptyDay(date, workingDay, status) {
@@ -331,7 +352,7 @@ export async function dailyBoard(actor, query, today = karachiDateString()) {
     filter.department = query.departmentId;
   }
   const people = await Employee.find(filter).populate('department', 'name').sort({ name: 1 });
-  const employed = people.filter((person) => employedOn(person, date));
+  const employed = people.filter((person) => wasEmployedOn(person, date));
   const facts = await dayFacts(employed.map((person) => person._id), date, date);
   const items = employed.map((person) => {
     const day = resolveDay(person, date, facts, today);

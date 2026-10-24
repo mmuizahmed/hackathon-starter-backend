@@ -2,7 +2,7 @@
 
 Backend for the Saylani HCM Lite hackathon. Express and MongoDB, plain JavaScript, Node 22. The React app is a separate repo. It proxies `/api/*` to this server, so the login cookie is first-party.
 
-This revision covers company setup, login, organization settings, employees, and attendance. Leave, payroll, dashboards, and AI are not built yet. There is no seed data. A fresh database stays empty until someone finishes setup.
+This revision covers company setup, login, organization, employees, attendance, leave, payroll, payslips, announcements, notifications, analytics, and the AI assistant. There is no seed data. A fresh database stays empty until someone finishes setup.
 
 Read these before changing the API:
 
@@ -60,7 +60,11 @@ The response sets an httpOnly cookie named `token`. It does not return the token
 | `MONGODB_URI` | No | empty | MongoDB connection string. Empty starts without a database. |
 | `JWT_SECRET` | Yes | none | Signs the login cookie. At least 16 characters. |
 | `CLIENT_URL` | No | `http://localhost:5173` | Frontend origin for CORS. On Render, set the Vercel origin. |
-| `AI_API_KEY` | No | empty | Reserved for the AI module. Not used yet. Never send it to the browser. |
+| `AI_API_KEY` | No | empty | Server-side key for the AI assistant. Empty still boots. Never send it to the browser. |
+| `AI_BASE_URL` | No | Gemini OpenAI URL | OpenAI-compatible chat completions base. A trailing slash is added if you omit it. |
+| `AI_MODEL` | No | `gemini-2.5-flash` | Model name sent to that endpoint. |
+| `AI_RATE_LIMIT` | No | `20` | AI requests per user per hour. Over the limit is 429. |
+| `AI_TIMEOUT_MS` | No | `15000` | Abort the provider call after this many milliseconds. |
 | `ADMIN_EMAIL` | No | empty | With `ADMIN_PASSWORD`, creates the admin once on boot. |
 | `ADMIN_PASSWORD` | No | empty | 8 to 72 characters. Leave empty for the setup screen. |
 | `COMPANY_NAME` | No | `HCM Lite` when bootstrapping | Used only with the env bootstrap. |
@@ -75,7 +79,7 @@ The process checks these values before it listens. A bad value stops startup wit
 | --- | --- |
 | `npm run dev` | Starts the API with `node --watch`. |
 | `npm start` | Starts the API once. Use this in production. |
-| `npm test` | Health, Karachi dates, setup, login, password gate, role guard, employee scope, audit, working days, employees, CSV dry run, and attendance. |
+| `npm test` | Health, dates, auth, employees, attendance, leave, payroll, announcements, analytics formulas, and AI tools with a mocked provider. |
 
 ## Response shape
 
@@ -103,7 +107,7 @@ Set these on the service:
 - `MONGODB_URI` = the Atlas connection string
 - `JWT_SECRET` = a long random string (at least 16 characters)
 - `CLIENT_URL` = the Vercel origin, such as `https://your-app.vercel.app`
-- `AI_API_KEY` = the LLM key, for the AI module that is not built yet
+- `AI_API_KEY` = the LLM key. Leave it empty and chat returns a friendly "not configured" message
 
 Do not set `ADMIN_EMAIL` unless you want the admin created on boot. Do not commit `.env`.
 
@@ -117,5 +121,8 @@ Do not set `ADMIN_EMAIL` unless you want the admin created on boot. Do not commi
 - Attendance check-in and check-out, camera checks, daily board, month calendar, and corrections
 - Mongoose models for every collection
 - Audit log write helper and admin-only `GET /api/audit`
+- Leave requests, salary structures, payroll, payslip PDF, announcements, and notifications
+- Analytics at `GET /api/analytics/admin`, `/hr`, `/me`, `/anomalies`, and `/attrition-risk`
+- AI chat, dashboard summary, smart leave, payslip explanation, and policy Q&A
 
-Leave requests, payroll, dashboards, announcements, and AI are specified in `docs/API.md` and not implemented in this revision.
+Attendance totals for dashboards, payroll, and the AI tools all go through `summarizeEmployeeAttendance`.

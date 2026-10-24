@@ -80,7 +80,7 @@ Public user:
 
 ## Implemented in this revision
 
-Auth, organization, employees, attendance, leave, payroll, payslips, announcements, and notifications. Dashboards and AI are still planned.
+Auth, organization, employees, attendance, leave, payroll, payslips, announcements, notifications, analytics, and AI.
 
 | Method | Path | Who |
 | --- | --- | --- |
@@ -133,6 +133,16 @@ Auth, organization, employees, attendance, leave, payroll, payslips, announcemen
 | GET | `/api/notifications/unread-count` | Own |
 | POST | `/api/notifications/:id/read` | Own |
 | POST | `/api/notifications/read-all` | Own |
+| GET | `/api/analytics/admin` | Admin |
+| GET | `/api/analytics/hr` | Admin, HR |
+| GET | `/api/analytics/me` | Any logged-in user with an employee profile |
+| GET | `/api/analytics/anomalies` | Admin, HR |
+| GET | `/api/analytics/attrition-risk` | Admin, HR |
+| POST | `/api/ai/chat` | Any logged-in user, scoped |
+| POST | `/api/ai/summary` | Admin, HR |
+| POST | `/api/ai/smart-leave` | HR, employee |
+| POST | `/api/ai/explain-payslip` | Any logged-in user, scoped |
+| POST | `/api/ai/policy` | Any logged-in user |
 
 ### Contract notes for leave and payroll
 
@@ -148,7 +158,7 @@ Auth, organization, employees, attendance, leave, payroll, payslips, announcemen
 - The structure that covers the last day of the month is the one payroll uses. A raise dated next month does not change this month's draft.
 - `GET /api/notifications` adds `unreadCount`. `GET /api/notifications/unread-count` returns `{ "count": 0 }`.
 
-## Role rules used for the planned routes
+## Role rules
 
 Section 2 lets admin **read** employees, attendance, leave, and payroll. Section 8 still blocks some **actions**. Where those differ, this table wins:
 
@@ -170,11 +180,13 @@ Section 2 lets admin **read** employees, attendance, leave, and payroll. Section
 | Payroll draft | View | Manage | No |
 | Finalize payroll | Yes | No | No |
 | Payslips | All | All | Own |
-| Dashboards | Company | HR | Personal |
+| Analytics | Company | HR | Personal (`/api/analytics/me`) |
 | AI chat | All data | HR data | Own data |
 | AI summary | Yes | Yes | No |
 | Smart leave | No | Own | Own |
+| Explain payslip | Any slip | Any slip | Own slip |
 | Policy Q&A | Yes | Yes | Yes |
+| Absence anomalies, attrition risk | Yes | Yes | No |
 | Announcements | Post | Post | Read |
 | Notifications | Own | Own | Own |
 | Audit log | View | No | No |
@@ -737,47 +749,60 @@ A failed finalize is `422` with `errors` pointing at those lists. `override: tru
 
 A finalized run sets `status: "finalized"`, `finalizedBy`, and `finalizedAt`. Draft totals live on the run: `{ employees, gross, deductions, tax, net }`. `employees` counts payslips, not people who were skipped for a missing structure.
 
-## M7 Dashboards — planned
+## M7 Analytics — implemented
 
-All numbers are computed on the server. Query `from`, `to` (`YYYY-MM-DD`), and optional `departmentId`. Employee dashboard ignores `departmentId` and uses the caller.
+The planned paths were `GET /api/dashboards/admin`, `/hr`, and `/me`. This revision serves the same screens at `GET /api/analytics/admin`, `/hr`, and `/me`.
+
+All numbers are computed on the server. Query `from`, `to` (`YYYY-MM-DD`), and optional `departmentId`. An employee call ignores `departmentId` and forces their own employee id. A range longer than 400 days is `400`. Percents are rounded to 2 decimals, and the rate is 0 when the denominator is 0.
+
+Attendance counts are `summarizeEmployeeAttendance` in `src/services/attendanceSummary.service.js`. Payroll uses that same function, so a dashboard, a payslip, and an AI tool agree on present, late, half day, missing checkout, absent, and leave. A stored row wins. A past open check-in is `missing_checkout`. Approved leave covers a day with no row. A day after today in Asia/Karachi is not an absence. Bradford spells are the exception: they need the day sequence, so they use `loadClassifiedDays` and the same status rules.
+
+Leave utilization reads approved requests from `listLeaveRequests` and quotas from `listLeaveTypes`. Payroll cost reads `listPayslips`. Admin and HR also see runs from `listPayrollRuns`. There is no second reader of those collections in the analytics service.
 
 Formulas:
 
-- Headcount: employees with status `active` or `probation` on the end date (joined on or before it, and not exited before it).
-- Attrition %: exits in the period ÷ average headcount × 100.
+- Headcount: people employed on the end date. `joinDate` is on or before that date, `exitDate` is empty or on or after it, and a row marked `exited` with no `exitDate` is excluded. Someone who leaves on 15 October still counts on 1 October.
+- Attrition %: exits whose `exitDate` falls in `[from, to]` ÷ average headcount × 100. Average headcount is (headcount on `from` + headcount on `to`) / 2.
 - Attendance rate: (present + late + missing_checkout + 0.5 × half_day) ÷ (working-day slots − on_leave).
-- Late %: late ÷ (present + late). Use the `late` flag, not only status `late`, so a late half day counts.
-- Absenteeism: absent days ÷ expected working days, per department.
-- Leave utilization: approved days ÷ quota, per leave type and department. Skip unpaid.
-- Payroll cost: sum of gross and of net by month and department.
-- Average salary: mean gross by department and by designation.
+- Late %: late arrivals ÷ (present + late arrivals). The late flag counts, so a late half day counts. It is not only status `late`.
+- Absenteeism: absent days ÷ expected working days, per department. Expected days are the working days in the person's employed window.
+- Leave utilization: approved days ÷ (yearly quota × department headcount on `to`), per paid leave type and department. Unpaid leave and a null quota are skipped.
+- Payroll cost: sum of payslip `gross` for each `YYYY-MM` touched by the range. `departmentId` is applied in memory, because the payslip list has no department query. Empty slips return `payrollCost: 0` and `averageSalary: 0`.
+- Average salary: mean gross. Admin and HR also get that mean by department and by designation.
+- Tenure buckets, measured to the end date: `<1y` under 365 days, `1-3y` under 3 × 365 days, otherwise `3y+`.
 
-### GET `/api/dashboards/admin`
+### GET `/api/analytics/admin`
 
-Admin only.
+Admin only. HR and employees receive `403`.
 
 ```json
 {
   "headcount": 0,
   "attritionRate": 0,
+  "exits": 0,
+  "averageHeadcount": 0,
+  "attendanceRate": 0,
+  "lateRate": 0,
   "payrollCost": 0,
   "averageSalary": 0,
   "headcountByDepartment": [{ "departmentId": "…", "name": "Engineering", "count": 0 }],
-  "payrollCostByDepartment": [{ "departmentId": "…", "name": "Engineering", "gross": 0, "net": 0 }],
+  "payrollCostByDepartment": [{ "departmentId": "…", "name": "Engineering", "gross": 0, "net": 0, "averageSalary": 0 }],
+  "averageSalaryByDesignation": [{ "designationId": "…", "name": "Engineer", "gross": 0, "averageSalary": 0 }],
   "gender": [{ "gender": "female", "count": 0 }],
   "tenureBuckets": [
     { "label": "<1y", "count": 0 },
     { "label": "1-3y", "count": 0 },
     { "label": "3y+", "count": 0 }
-  ]
+  ],
+  "audit": []
 }
 ```
 
-The audit feed on the admin screen is `GET /api/audit?limit=10`, not a second dashboard field.
+`audit` is the latest 10 rows from the same list as `GET /api/audit`. `exits` and `averageHeadcount` sit beside `attritionRate` so the percent can be checked.
 
-### GET `/api/dashboards/hr`
+### GET `/api/analytics/hr`
 
-Admin and HR.
+Admin and HR. Employees receive `403`.
 
 ```json
 {
@@ -787,18 +812,19 @@ Admin and HR.
   "lateToday": 0,
   "pendingLeave": 0,
   "pendingCorrections": 0,
-  "attendanceTrend": [{ "date": "2026-10-24", "rate": 0 }],
-  "absenteeismByDepartment": [{ "departmentId": "…", "name": "Engineering", "rate": 0 }],
-  "leaveByType": [{ "code": "SICK", "days": 0 }],
+  "attendanceTrend": [{ "date": "2026-10-05", "rate": 0 }],
+  "absenteeismByDepartment": [{ "departmentId": "…", "name": "Engineering", "absentDays": 0, "expectedDays": 0, "rate": 0 }],
+  "leaveByType": [{ "code": "ANNUAL", "days": 0 }],
+  "leaveUtilization": [{ "code": "ANNUAL", "name": "Annual", "departmentId": "…", "approvedDays": 0, "quota": 0, "rate": 0 }],
   "topLateComers": [{ "employeeId": "…", "name": "Eva", "lateDays": 0 }]
 }
 ```
 
-`topLateComers` is at most 5 for the filtered range.
+`presentToday`, `onLeaveToday`, and `lateToday` use `summarizeEmployeeAttendance` for today in Asia/Karachi. `pendingLeave` is the total from `listLeaveRequests` with `status=pending`. `topLateComers` is at most 5, ordered by late arrivals. `lateDays` in that list is the late-arrival count, including a late half day. Trend days after today are omitted. A leave day has rate 0 because the denominator is 0.
 
-### GET `/api/dashboards/me`
+### GET `/api/analytics/me`
 
-The signed-in employee (or HR with an employee id). 403 if they have no employee id.
+Any logged-in user who has an employee profile. `403` if they do not. Query filters are ignored. This is their own week and month, not the company.
 
 ```json
 {
@@ -812,49 +838,119 @@ The signed-in employee (or HR with an employee id). 403 if they have no employee
 }
 ```
 
-`lastPayslip` is `{ id, month, net }` or null.
+`lateCount` is `summarizeEmployeeAttendance` from the first of this month through today. `leaveBalances` come from `getLeaveBalances`. `lastPayslip` is `{ id, month, net }` from `listPayslips`, or null. `todayStatus` is one of `on_leave`, `missing_checkout`, `half_day`, `late`, `present`, `absent`, or null when today is not a working day.
 
-## M8 AI — planned
+### GET `/api/analytics/anomalies`
 
-`AI_API_KEY` stays on the server. Timeout 15 seconds. About 20 requests per user per hour. Log every call in `aiLogs`. Answers include `"label": "AI-generated"`. On failure, return a friendly message and still log `status`.
+Admin and HR. The window is the 12 months ending on `to`, not the KPI `from`. Each returned person has at least one plain-language `reasons` entry.
 
-The model must not query MongoDB. Tools call the same services as the REST API, with `req.user` passed in. The model must not save data. Smart-leave JSON is validated. If it fails, retry once, then the client shows the normal form.
+- Bradford Factor is spells² × absent days. A spell is consecutive absent working days. A weekend does not split a spell. 50 or more is `watch`, 125 or more is `concern`, 400 or more is `serious`.
+- Monday/Friday: at least 3 absences, and at least half of them on Monday or Friday.
+- Holiday-adjacent: at least 2 absences on the nearest working day before or after a holiday.
 
-Tools: `get_headcount`, `get_attendance_summary`, `get_late_comers`, `get_leave_summary`, `get_my_leave_balance`, `get_payroll_summary`, `search_employees`. An employee tool call uses the scope helper. A salary question about someone else is refused by the service, not only by the prompt.
+```json
+{
+  "from": "2025-10-31",
+  "to": "2026-10-31",
+  "flags": [{
+    "employeeId": "…",
+    "name": "Eva",
+    "department": { "id": "…", "name": "Engineering" },
+    "bradford": 50,
+    "level": "watch",
+    "reasons": ["Bradford Factor is 50 (5 spells, 2 days) over 12 months."]
+  }]
+}
+```
+
+### GET `/api/analytics/attrition-risk`
+
+Admin and HR. This is a fixed point list, not a trained model. Only `active` and `probation` people are scored. A score of 0 is omitted. The score is capped at 100.
+
+| Driver | Points | When |
+| --- | --- | --- |
+| tenure | 25 | Status is `probation`, or tenure on `to` is under 183 days |
+| late | 25 | Late rate in the filter range is 20% or more |
+| absenteeism | 25 | Absent days are 10% or more of expected working days |
+| unpaidLeave | 15 | Any unpaid leave day in the range |
+| salary | 10 | `salary.basic` is below the department median basic |
+
+Late rate, absenteeism, and unpaid days come from `getAttendanceSummary`, which calls `summarizeEmployeeAttendance`.
+
+```json
+{
+  "from": "2026-10-01",
+  "to": "2026-10-31",
+  "items": [{
+    "employeeId": "…",
+    "name": "Eva",
+    "department": { "id": "…", "name": "Engineering" },
+    "score": 25,
+    "drivers": [{ "key": "late", "points": 25, "reason": "Late arrival rate is 66.67% in this period." }]
+  }]
+}
+```
+
+## M8 AI — implemented
+
+`AI_API_KEY` stays on the server. Empty is allowed at boot. `AI_BASE_URL` defaults to `https://generativelanguage.googleapis.com/v1beta/openai/`. `AI_MODEL` defaults to `gemini-2.5-flash`. The call is OpenAI-compatible `POST {base}chat/completions`. Timeout is `AI_TIMEOUT_MS` (default 15000). `AI_RATE_LIMIT` defaults to 20 requests per user per rolling hour. The 429 message is `Too many AI requests. Try again in an hour.` Every call is logged in `aiLogs` with `feature` `chat`, `summary`, `smart_leave`, `explain_payslip`, or `policy`.
+
+Answers include `"label": "AI-generated"` and `"aiGenerated": true`. A provider failure, timeout, or missing key returns HTTP 200 with `fallback: true` and a short sentence (`The assistant is not configured yet.`, `The assistant took too long. Please try again.`, or `I could not reach the assistant. Please try again in a moment.`). `403`, `404`, and `429` still use those status codes.
+
+The model does not query MongoDB. Tools call the same services as the REST API, with `req.user`. The tool loop stops after 3 rounds, with at most 4 calls in a round. Chat accepts `{ "message": "…" }` or `{ "messages": [{ "role": "user", "content": "…" }] }`. System messages from the client are dropped.
+
+Tools: `get_headcount`, `get_attendance_summary`, `get_late_comers`, `get_leave_summary`, `get_my_leave_balance`, `get_payroll_summary`, `search_employees`. `get_leave_summary` uses `getLeaveSummary`. `get_my_leave_balance` uses `getLeaveBalances`. `get_payroll_summary` uses `getPayrollSummary`. If the model passes `employeeId`, `assertOwnEmployee` runs before any of those reads. An employee asking for a colleague's salary is refused by that helper. The refusal is `{ refused: true, message }` and is listed in `sources`. The model is not given the hidden number. `search_employees` drops `salary` for an employee caller. `get_late_comers` is `403` for an employee.
 
 | Method | Path | Who | Body |
 | --- | --- | --- | --- |
 | POST | `/api/ai/chat` | All roles, scoped | `{ "message": "Who is on leave today?" }` |
-| POST | `/api/ai/summary` | Admin, HR | `{ "dashboard": "hr", "from": "2026-10-01", "to": "2026-10-31", "departmentId": null }` |
-| POST | `/api/ai/smart-leave` | Employee, or HR with an employee id | `{ "text": "Need next Monday and Tuesday off for a wedding" }` |
+| POST | `/api/ai/summary` | Admin, HR | `{ "kpis": { "headcount": 12 }, "filters": { "from": "2026-10-01", "to": "2026-10-31" } }` |
+| POST | `/api/ai/smart-leave` | Employee, or HR | `{ "text": "Need next Monday and Tuesday off for a wedding" }` |
+| POST | `/api/ai/explain-payslip` | All roles, scoped | `{ "payslipId": "…" }` |
 | POST | `/api/ai/policy` | All roles | `{ "question": "When am I marked late?" }` |
 
 Chat response:
 
 ```json
-{ "success": true, "data": { "answer": "…", "label": "AI-generated", "tools": ["get_leave_summary"] } }
+{
+  "success": true,
+  "data": {
+    "answer": "…",
+    "label": "AI-generated",
+    "aiGenerated": true,
+    "tools": ["get_leave_summary"],
+    "sources": [{ "tool": "get_leave_summary", "args": {}, "resultSummary": "…" }]
+  }
+}
 ```
 
-Summary response: `{ bullets: ["…", "…"], label: "AI-generated" }` with 3 to 5 bullets that use only the dashboard numbers you send the model.
+Summary response: `{ bullets, fallback, label, aiGenerated }` with 3 to 5 bullets. The prompt says to use only the `kpis` object you send. If the model returns invalid JSON, the server retries once, then builds fallback bullets from those keys. It does not look up new numbers.
 
-Smart leave response:
+Smart leave response. The client shows this in the form. Nothing is saved until `POST /api/leave/requests`.
 
 ```json
 {
   "success": true,
   "data": {
+    "type": "CASUAL",
+    "start": "2026-10-26",
+    "end": "2026-10-27",
+    "reason": "Sister's wedding",
     "leaveTypeCode": "CASUAL",
     "startDate": "2026-10-26",
     "endDate": "2026-10-27",
-    "reason": "Sister's wedding",
-    "label": "AI-generated"
+    "fallback": false,
+    "label": "AI-generated",
+    "aiGenerated": true
   }
 }
 ```
 
-The client shows this in the form. Nothing is saved until `POST /api/leave/requests`.
+`type` must be a live leave-type code. Dates must be real `YYYY-MM-DD` values with `end` on or after `start`. Invalid JSON is retried once. A second failure, or a code that is not a leave type, returns `fallback: true` and null fields.
 
-Policy answers may only use the rules in the hackathon brief (office hours, leave quotas, payroll, who can approve). If the question is outside those rules, the answer says it does not know.
+`POST /api/ai/explain-payslip` loads the slip with `getPayslip`, so an employee cannot explain a colleague's slip (`403`). The prompt tells the model to describe the stored breakdown and not recalculate it.
+
+Policy answers may only use the rules in the hackathon brief (office hours, leave quotas, payroll, who can approve) plus the live settings and leave types. If the question is outside those rules, the answer says it does not know. The same rules are in the chat system prompt. The assistant replies in English, Urdu, or Roman Urdu, matching the user.
 
 ## M9 Comms and audit
 

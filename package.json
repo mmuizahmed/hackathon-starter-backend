@@ -2,7 +2,7 @@
   "name": "hackathon-starter-backend",
   "version": "1.0.0",
   "private": true,
-  "description": "HCM Lite API. Setup, auth, organization, employees, attendance, leave, payroll, payslips, announcements, and notifications.",
+  "description": "HCM Lite API. Setup, auth, organization, employees, attendance, leave, payroll, payslips, announcements, notifications, analytics, and AI.",
   "type": "module",
   "engines": {
     "node": ">=22 <23"

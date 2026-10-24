@@ -8,7 +8,7 @@ const aiLogSchema = new mongoose.Schema(
     feature: {
       type: String,
       required: true,
-      enum: ['chat', 'summary', 'smart_leave', 'policy'],
+      enum: ['chat', 'summary', 'smart_leave', 'policy', 'explain_payslip'],
     },
     message: { type: String, default: '' },
     tools: { type: [String], default: [] },
