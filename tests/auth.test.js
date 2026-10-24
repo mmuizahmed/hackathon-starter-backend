@@ -75,6 +75,8 @@ test('setup, login, password gate, role guard, and audit', { timeout: 180000 }, 
       assert.match(tokenCookie, /^token=/);
       assert.match(setCookie[0], /HttpOnly/i);
       assert.match(setCookie[0], /SameSite=Lax/i);
+      const cookieAttrs = setCookie[0].split(';').slice(1).join(';');
+      assert.doesNotMatch(cookieAttrs, /Secure/i);
 
       const settings = await Settings.findOne({ key: 'company' }).lean();
       assert.equal(settings.officeStart, '10:00');

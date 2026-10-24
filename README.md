@@ -79,7 +79,8 @@ The process checks these values before it listens. A bad value stops startup wit
 | --- | --- |
 | `npm run dev` | Starts the API with `node --watch`. |
 | `npm start` | Starts the API once. Use this in production. |
-| `npm test` | Health, dates, auth, employees, attendance, leave, payroll, announcements, analytics formulas, and AI tools with a mocked provider. |
+| `npm test` | Health, dates, auth, employees, attendance, leave, payroll, announcements, analytics formulas, AI tools with a mocked provider, and production cookie, proxy, and error checks. |
+| `npm run smoke` | End-to-end demo against a server that is already running. Set `BASE_URL`. See below. |
 
 ## Response shape
 
@@ -110,6 +111,22 @@ Set these on the service:
 - `AI_API_KEY` = the LLM key. Leave it empty and chat returns a friendly "not configured" message
 
 Do not set `ADMIN_EMAIL` unless you want the admin created on boot. Do not commit `.env`.
+
+`NODE_ENV=production` turns on `trust proxy` (one hop, for Render), the `Secure` cookie flag, and hides error stacks. CORS uses `CLIENT_URL` only. Request bodies over 1 MB are rejected.
+
+## Smoke test
+
+`scripts/smoke.mjs` walks the demo through the HTTP API: setup, org data, an HR login, two employees, the password gate, check-in, leave, payroll, a payslip PDF, analytics, the AI assistant, and the audit log. It uses Node's built-in `fetch` and keeps a cookie jar per role. Each step prints `PASS`, `FAIL`, or `SKIP`. AI steps print `SKIP` when the provider is not configured or cannot be reached. The process exits non-zero if any step fails.
+
+Start the API against the database you want to exercise, then:
+
+```bash
+BASE_URL=http://127.0.0.1:5000 npm run smoke
+```
+
+`BASE_URL` defaults to `http://127.0.0.1:5000`. The script creates the company, so the database must be empty. It uses a timestamp in every email so a second run on the same database still fails at setup, which is what you want: setup only succeeds once.
+
+Do not point this at the judge database unless you can wipe it afterwards. Drop that database in Atlas so the judges still see the fresh setup screen. A local MongoDB or a throwaway memory server is the right target.
 
 ## What is done
 

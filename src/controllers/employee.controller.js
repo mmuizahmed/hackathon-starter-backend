@@ -32,7 +32,7 @@ export const postImport = asyncHandler(async (req, res) => {
   else if (typeof req.body?.csv === 'string') csv = req.body.csv;
   else throw new AppError('Upload a CSV file in field "file", or send JSON { csv }', 400);
   // Missing dryRun stays a dry run so a click cannot write by accident.
-  const dryRun = req.query.dryRun !== 'false';
+  const dryRun = req.validatedQuery.dryRun !== 'false';
   sendSuccess(res, await importEmployees(req.user, csv, { dryRun }));
 });
 

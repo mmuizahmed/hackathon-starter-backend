@@ -10,7 +10,8 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "test": "node --test --test-concurrency=1 tests/*.test.js"
+    "test": "node --test --test-concurrency=1 tests/*.test.js",
+    "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import { apply, balances, cancel, list, review } from '../controllers/leave.controller.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
-import { validateBody, validateQuery } from '../middleware/validate.js';
+import { rejectBadObjectId, validateBody, validateQuery } from '../middleware/validate.js';
 import { applyLeaveSchema, leaveBalanceQuerySchema, leaveListQuerySchema, reviewLeaveSchema } from '../validators/leave.js';
 
 const router = Router();
+
+router.param('id', rejectBadObjectId);
 
 router.get('/balances', requireAuth, validateQuery(leaveBalanceQuerySchema), balances);
 router.get('/requests', requireAuth, validateQuery(leaveListQuerySchema), list);

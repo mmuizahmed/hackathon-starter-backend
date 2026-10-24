@@ -38,3 +38,14 @@ export function validateQuery(schema) {
     next();
   };
 }
+
+const OBJECT_ID = /^[a-f\d]{24}$/i;
+
+// Route params never reach Mongo as a cast. A bad id is the same 400 as a bad body field.
+export function rejectBadObjectId(req, res, next, value, name) {
+  if (OBJECT_ID.test(String(value || ''))) {
+    next();
+    return;
+  }
+  next(new AppError('Validation failed', 400, [{ path: name, message: 'Invalid id' }]));
+}

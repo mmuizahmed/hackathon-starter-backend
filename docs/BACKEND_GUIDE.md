@@ -51,6 +51,8 @@ Protected routes add `requireAuth` and, when needed, `requireRole('admin')` afte
 
 The frontend must not call the Render host from the browser if it wants this cookie. It should call its own `/api` path and let Vercel proxy it. The frontend also cannot read `token` from JavaScript. Use `credentials: 'include'` only if a request is cross-origin. With the proxy, a normal same-origin fetch is enough.
 
+In production the app sets `trust proxy` to 1. Render is that one hop, so the login rate limit sees the browser IP from `X-Forwarded-For` instead of the proxy. CORS allows only `CLIENT_URL`. JSON and form bodies are capped at 1 MB. A 500 response in production is `Internal server error` with no stack. Invalid route ids are rejected as validation errors before Mongo sees them.
+
 ## Roles and data scope
 
 Three roles: `admin`, `hr`, `employee`.
