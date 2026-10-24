@@ -1,12 +1,18 @@
-# Hackathon starter backend
+# HCM Lite API
 
-A small Express API you can clone at the start of a hackathon and extend. It connects to MongoDB when you give it a URI, exposes a health check, and returns the same JSON shape for every success and error.
+Backend for the Saylani HCM Lite hackathon. Express and MongoDB, plain JavaScript, Node 22. The React app is a separate repo. It proxies `/api/*` to this server, so the login cookie is first-party.
 
-It does not include assignment features. Add those with the recipe at the bottom once the brief is known.
+This revision is the foundation: company setup, login, role checks, every collection the later modules need, and a read-only audit log. Employees, attendance, leave, payroll, dashboards, and AI are not built yet. There is no seed data. A fresh database stays empty until someone finishes setup.
+
+Read these before changing the API:
+
+- [docs/API.md](docs/API.md) — contract for all 9 modules. Implemented routes are marked.
+- [docs/PLAN.md](docs/PLAN.md) — what is done per module.
+- [docs/BACKEND_GUIDE.md](docs/BACKEND_GUIDE.md) — how a request moves through the code, for the demo and the interview.
 
 ## Setup
 
-1. Install [Node.js 22](https://nodejs.org/). The app allows any 22.x release (`>=22 <23` in `package.json`).
+1. Install [Node.js 22](https://nodejs.org/).
 2. Install dependencies:
 
 ```bash
@@ -19,7 +25,9 @@ npm install
 cp .env.example .env
 ```
 
-4. Start MongoDB on your machine, or leave `MONGODB_URI` empty. An empty URI is valid: the API still starts, and the health check reports `db: "disconnected"`.
+Set `JWT_SECRET` to at least 16 characters. Leave `ADMIN_EMAIL` and `ADMIN_PASSWORD` empty if you want the setup screen.
+
+4. Start MongoDB, or leave `MONGODB_URI` empty. An empty URI is valid: the API still starts, and `/api/health` reports `db: "disconnected"`. Setup and login need a database.
 5. Start the server:
 
 ```bash
@@ -30,43 +38,44 @@ npm run dev
 
 ```bash
 curl http://localhost:5000/api/health
+curl http://localhost:5000/api/setup/status
 ```
 
-Example when MongoDB is connected:
+Create the first admin (only works once):
 
-```json
-{
-  "success": true,
-  "data": {
-    "status": "ok",
-    "uptime": 3,
-    "db": "connected"
-  }
-}
+```bash
+curl -i -c cookies.txt -H 'content-type: application/json' \
+  -d '{"companyName":"Saylani","adminName":"Ada Admin","adminEmail":"ada@example.com","adminPassword":"correct-horse"}' \
+  http://localhost:5000/api/setup
 ```
 
-`uptime` is whole seconds since the process started.
+The response sets an httpOnly cookie named `token`. It does not return the token in JSON.
 
 ## Environment variables
 
 | Variable | Required | Default | Purpose |
 | --- | --- | --- | --- |
-| `PORT` | No | `5000` | Port the API listens on. Render sets this in production. |
-| `NODE_ENV` | No | `development` | `development`, `test`, or `production`. Request logs are printed only in development. |
-| `MONGODB_URI` | No | empty | MongoDB connection string. Empty means start without a database. |
-| `CLIENT_URL` | No | `http://localhost:5173` | Frontend origin allowed by CORS. Use the scheme, host, and port only, for example `http://localhost:5173`. |
+| `PORT` | No | `5000` | Port the API listens on. Render sets this. |
+| `NODE_ENV` | No | `development` | `development`, `test`, or `production`. |
+| `MONGODB_URI` | No | empty | MongoDB connection string. Empty starts without a database. |
+| `JWT_SECRET` | Yes | none | Signs the login cookie. At least 16 characters. |
+| `CLIENT_URL` | No | `http://localhost:5173` | Frontend origin for CORS. On Render, set the Vercel origin. |
+| `AI_API_KEY` | No | empty | Reserved for the AI module. Not used yet. Never send it to the browser. |
+| `ADMIN_EMAIL` | No | empty | With `ADMIN_PASSWORD`, creates the admin once on boot. |
+| `ADMIN_PASSWORD` | No | empty | 8 to 72 characters. Leave empty for the setup screen. |
+| `COMPANY_NAME` | No | `HCM Lite` when bootstrapping | Used only with the env bootstrap. |
 
-The process checks these values before it listens. A bad `PORT`, `NODE_ENV`, `CLIENT_URL`, or `MONGODB_URI` stops startup with a `Configuration error:` message.
+Leave `ADMIN_EMAIL` unset on Render if judges should create the company themselves. If it is set, boot creates the admin and `POST /api/setup` returns 409.
 
-Copy names from `.env.example`. Do not commit `.env`.
+The process checks these values before it listens. A bad value stops startup with `Configuration error:`.
 
 ## Scripts
 
 | Command | What it does |
 | --- | --- |
-| `npm run dev` | Starts the API with `node --watch`. Editing a source file restarts it. Changing `.env` does not; stop the process and run `npm run dev` again. |
+| `npm run dev` | Starts the API with `node --watch`. |
 | `npm start` | Starts the API once. Use this in production. |
-| `npm test` | Runs the health-check test. No database required. |
+| `npm test` | Health, Karachi dates, setup, login, password gate, role guard, employee scope, audit. |
 
 ## Response shape
 
@@ -79,137 +88,30 @@ Success:
 Error:
 
 ```json
-{ "success": false, "message": "What went wrong" }
+{ "success": false, "message": "What went wrong", "errors": [{ "path": "adminEmail", "message": "Invalid email" }] }
 ```
 
-Unknown routes return `404` with that error shape. A controller can set `error.statusCode` (for example `400` or `404`) and the central error handler will use it. In production, unexpected server errors return the message `Internal server error` so internal details stay in the server log.
-
-## Folder structure
-
-```text
-src/
-  server.js                 loads .env, starts the process, connects to MongoDB
-  app.js                    Express app: security, JSON, routes, errors
-  config/
-    env.js                  checks environment variables
-    db.js                   MongoDB connection
-  routes/
-    index.js                mount new routers here
-    health.routes.js
-  controllers/
-    health.controller.js
-  middleware/
-    notFound.js             unknown routes
-    errorHandler.js         every thrown error becomes JSON
-  utils/
-    asyncHandler.js         sends async errors to the error handler
-    response.js             sendSuccess(res, data)
-tests/
-  health.test.js
-```
-
-A request goes through `app.js`, then a router, then a controller. The controller sends `{ success: true, data }` or throws. Thrown errors end in `errorHandler`.
+`errors` is only present on validation failures. Lists use `?page` and `?limit` (default 1 and 20, max 100) and return `data: { items, total, page, limit }`.
 
 ## Deploy on Render
 
-`render.yaml` describes a Node web service:
+`render.yaml` describes the web service. Build: `npm ci`. Start: `node src/server.js`. Health check: `/api/health`.
 
-- Build command: `npm ci`
-- Start command: `node src/server.js` (Node receives the stop signal on redeploy)
-- Health check path: `/api/health`
+Set these on the service:
 
-Steps:
+- `NODE_ENV` = `production`
+- `MONGODB_URI` = the Atlas connection string
+- `JWT_SECRET` = a long random string (at least 16 characters)
+- `CLIENT_URL` = the Vercel origin, such as `https://your-app.vercel.app`
+- `AI_API_KEY` = the LLM key, for the AI module that is not built yet
 
-1. Push this repository to GitHub.
-2. Create a MongoDB Atlas cluster and a database user. Copy the connection string. Under Network Access, allow `0.0.0.0/0` so Render can reach the cluster.
-3. In Render, choose **New + Blueprint** and select this repo. Render reads `render.yaml`. To do it by hand instead, create a **Web Service** with the build command, start command, and health check path above.
-4. Set environment variables on the service:
-   - `NODE_ENV` = `production`
-   - `MONGODB_URI` = your Atlas connection string
-   - `CLIENT_URL` = the live frontend origin, such as `https://your-app.vercel.app`
-5. Leave `PORT` unset. Render provides it.
-6. Deploy, then open `https://<your-service>.onrender.com/api/health`. When Atlas accepts the connection, `data.db` is `"connected"`.
+Do not set `ADMIN_EMAIL` unless you want the admin created on boot. Do not commit `.env`.
 
-## Add a route and a model
+## What is done
 
-Example: a `notes` resource. Create these files, then mount the router.
+- First-run setup, login, logout, current user, change password
+- Role check, employee data-scope helper, temporary-password block
+- Mongoose models for every collection
+- Audit log write helper and admin-only `GET /api/audit`
 
-`src/models/Note.js`
-
-```javascript
-import mongoose from 'mongoose';
-
-const noteSchema = new mongoose.Schema(
-  {
-    title: { type: String, required: true, trim: true },
-    body: { type: String, default: '' },
-  },
-  { timestamps: true }
-);
-
-export const Note = mongoose.model('Note', noteSchema);
-```
-
-`src/controllers/note.controller.js`
-
-```javascript
-import { Note } from '../models/Note.js';
-import { asyncHandler } from '../utils/asyncHandler.js';
-import { sendSuccess } from '../utils/response.js';
-
-export const listNotes = asyncHandler(async (req, res) => {
-  const notes = await Note.find().sort({ createdAt: -1 });
-  sendSuccess(res, notes);
-});
-
-export const createNote = asyncHandler(async (req, res) => {
-  const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
-  if (!title) {
-    const error = new Error('Title is required');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  const note = await Note.create({ title, body: req.body.body || '' });
-  sendSuccess(res, note, 201);
-});
-```
-
-`src/routes/note.routes.js`
-
-```javascript
-import { Router } from 'express';
-import { createNote, listNotes } from '../controllers/note.controller.js';
-
-const router = Router();
-
-router.get('/', listNotes);
-router.post('/', createNote);
-
-export default router;
-```
-
-Replace `src/routes/index.js` with the whole file below. The health route stays mounted.
-
-```javascript
-import { Router } from 'express';
-import healthRoutes from './health.routes.js';
-import noteRoutes from './note.routes.js';
-
-const router = Router();
-
-router.use(healthRoutes);
-router.use('/notes', noteRoutes);
-
-export default router;
-```
-
-Restart `npm run dev`. The paths are `GET /api/notes` and `POST /api/notes`.
-
-Wrap every `async` controller with `asyncHandler`. Express 4 does not catch a rejected promise on its own; the wrapper forwards it to `errorHandler`.
-
-## Troubleshooting
-
-- Health says `"db": "disconnected"`: `MONGODB_URI` is empty, MongoDB is not running, or the URI cannot be reached. The API stays up either way. Read the `MongoDB:` lines in the terminal.
-- The browser blocks a request: set `CLIENT_URL` to the exact origin the page is served from, including `http` or `https` and the port.
-- Startup prints `Configuration error`: fix the named variable in `.env`. The server does not listen until the values are valid.
+Organization CRUD, employees, attendance, leave, payroll, dashboards, announcements, and AI are specified in `docs/API.md` and not implemented in this revision.

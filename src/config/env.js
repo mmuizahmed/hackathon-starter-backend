@@ -31,11 +31,41 @@ function parseEnv() {
     throw new Error('MONGODB_URI must start with mongodb:// or mongodb+srv://.');
   }
 
+  const jwtSecret = (process.env.JWT_SECRET || '').trim();
+  if (jwtSecret.length < 16) {
+    throw new Error('JWT_SECRET must be at least 16 characters.');
+  }
+
+  // Both or neither. Leave them empty so judges use the setup screen on an empty database.
+  const adminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+  const adminPassword = (process.env.ADMIN_PASSWORD || '').trim();
+  const companyName = (process.env.COMPANY_NAME || '').trim();
+  if (Boolean(adminEmail) !== Boolean(adminPassword)) {
+    throw new Error('Set both ADMIN_EMAIL and ADMIN_PASSWORD, or leave both empty.');
+  }
+  if (adminEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
+    throw new Error('ADMIN_EMAIL must be a valid email address.');
+  }
+  if (adminPassword && (adminPassword.length < 8 || adminPassword.length > 72)) {
+    throw new Error('ADMIN_PASSWORD must be 8 to 72 characters.');
+  }
+  if (companyName.length > 120) {
+    throw new Error('COMPANY_NAME must be at most 120 characters.');
+  }
+
+  // Used later by the AI module. The browser never receives this value.
+  const aiApiKey = (process.env.AI_API_KEY || '').trim();
+
   return {
     nodeEnv,
     port,
     clientUrl: parsedClientUrl.origin,
     mongodbUri,
+    jwtSecret,
+    adminEmail,
+    adminPassword,
+    companyName,
+    aiApiKey,
   };
 }
 

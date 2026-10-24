@@ -4,7 +4,10 @@ import test from 'node:test';
 
 process.env.NODE_ENV = 'test';
 process.env.CLIENT_URL = 'http://localhost:5173';
+process.env.JWT_SECRET = 'test-jwt-secret-value';
 delete process.env.MONGODB_URI;
+delete process.env.ADMIN_EMAIL;
+delete process.env.ADMIN_PASSWORD;
 
 const { default: app } = await import('../src/app.js');
 
