@@ -7,9 +7,15 @@ test('employees can only match their own employee id', () => {
   assert.deepEqual(employeeScopeFilter(employee), { employee: 'emp-1' });
   assert.doesNotThrow(() => assertOwnEmployee(employee, 'emp-1'));
 
-  const error = assert.throws(() => assertOwnEmployee(employee, 'emp-2'));
-  assert.equal(error.statusCode, 403);
-  assert.equal(error.message, 'You can only access your own records');
+  let caught = null;
+  try {
+    assertOwnEmployee(employee, 'emp-2');
+  } catch (error) {
+    caught = error;
+  }
+  assert.ok(caught);
+  assert.equal(caught.statusCode, 403);
+  assert.equal(caught.message, 'You can only access your own records');
 });
 
 test('admin and HR are not scoped to one employee', () => {
