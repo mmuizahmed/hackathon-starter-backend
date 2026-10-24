@@ -228,7 +228,7 @@ test('analytics formulas, role scope, and AI tools', { timeout: 180000 }, async 
     const omarSlip = await Payslip.create({
       payrollRun: run._id,
       employee: omar.employee._id,
-      month: '2026-10',
+      month: '2026-11',
       department: department._id,
       designation: designation._id,
       gross: 777777,
