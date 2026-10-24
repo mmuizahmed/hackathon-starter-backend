@@ -8,7 +8,7 @@ API health: https://hackathon-starter-backend-astm.onrender.com/api/health
 
 Frontend repo: https://github.com/mmuizahmed/hackathon-starter-frontend
 
-This repository is the API. The route contract is [docs/API.md](docs/API.md). The data model is [docs/SCHEMA.md](docs/SCHEMA.md). Interview answers are [docs/INTERVIEW_QA.md](docs/INTERVIEW_QA.md).
+This repository is the API. The route contract is [docs/API.md](docs/API.md). The data model is [docs/SCHEMA.md](docs/SCHEMA.md).
 
 ## Tech stack
 
@@ -17,7 +17,7 @@ This repository is the API. The route contract is [docs/API.md](docs/API.md). Th
 | UI | React 18, Vite, React Router, Tailwind | Role-based pages without a heavy framework. Vite proxies `/api` in local dev. |
 | Charts | Recharts | The server computes the numbers. The chart only draws them. |
 | UI host | Vercel | Serves the SPA and rewrites `/api` to Render, so the cookie is first-party. |
-| API | Node 22, Express 4, plain JavaScript | Easy to trace in an interview. Business rules live in services, not in route files. |
+| API | Node 22, Express 4, plain JavaScript | Easy to read and maintain. Business rules live in services, not in route files. |
 | Validation | Zod | Bad input fails before a service runs. |
 | Database | MongoDB and Mongoose 8 | Payslip breakdowns and audit snapshots are documents. Judges start from an empty database. |
 | Passwords | bcryptjs | Hashes are stored. The hash is `select: false` on the user model. |
