@@ -37,7 +37,9 @@ test('org, employees, and attendance', { timeout: 180000 }, async (t) => {
   const { default: app } = await import('../src/app.js');
   const { countWorkingDays, isWorkingDay, listWorkingDays } = await import('../src/services/calendar.service.js');
   const { checkIn, checkOut, dailyBoard } = await import('../src/services/attendance.service.js');
+  const { summarizeEmployeeAttendance } = await import('../src/services/attendanceSummary.service.js');
   const { Attendance } = await import('../src/models/Attendance.js');
+  const { Holiday } = await import('../src/models/Holiday.js');
   const { Employee } = await import('../src/models/Employee.js');
   const { LeaveRequest } = await import('../src/models/LeaveRequest.js');
   const { LeaveType } = await import('../src/models/LeaveType.js');
@@ -297,6 +299,27 @@ test('org, employees, and attendance', { timeout: 180000 }, async (t) => {
       const stored = await Attendance.findOne({ employee: state.eva.id, date: '2019-01-08' });
       assert.equal(stored.status, 'late');
       assert.equal(stored.late, true);
+
+      // 2019-01-12 is Saturday. A short late visit must stay present and must not be a payroll day.
+      const saturdayIn = await checkIn(actor, { source: 'web' }, karachiWallTimeToUtc('2019-01-12', '11:00'));
+      assert.equal(saturdayIn.status, 'present');
+      assert.equal(saturdayIn.late, false);
+      const saturday = await checkOut(actor, {}, karachiWallTimeToUtc('2019-01-12', '12:00'));
+      assert.equal(saturday.status, 'present');
+      assert.equal(saturday.late, false);
+      assert.ok(saturday.workedMinutes < 5 * 60);
+
+      await Holiday.create({ date: '2019-01-14', name: 'Test holiday', tentative: true });
+      await checkIn(actor, { source: 'web' }, karachiWallTimeToUtc('2019-01-14', '10:00'));
+      const holiday = await checkOut(actor, {}, karachiWallTimeToUtc('2019-01-14', '12:00'));
+      assert.equal(holiday.status, 'present');
+      assert.equal(holiday.late, false);
+
+      const offDays = await summarizeEmployeeAttendance(state.eva.id, '2019-01-12', '2019-01-14');
+      assert.equal(offDays.workingDays, 0);
+      assert.equal(offDays.halfDays, 0);
+      assert.equal(offDays.lateDays, 0);
+      assert.equal(offDays.presentDays, 0);
     });
 
     await t.test('approved correction writes attendance, and a used department cannot be deleted', async () => {

@@ -95,7 +95,7 @@ Auth, organization, employees, attendance, leave, payroll, payslips, announcemen
 | PUT, PATCH | `/api/settings` | Admin |
 | GET, POST, PATCH, DELETE | `/api/departments` | GET: admin, HR. Writes: admin |
 | GET, POST, PATCH, DELETE | `/api/designations` | GET: admin, HR. Writes: admin |
-| GET, POST, PATCH, DELETE | `/api/leave-types` | GET: admin, HR. Writes: admin |
+| GET, POST, PATCH, DELETE | `/api/leave-types` | GET: any logged-in user. Writes: admin |
 | GET, POST, PATCH, DELETE | `/api/holidays` | GET: admin, HR. Writes: admin |
 | GET, POST, PATCH | `/api/users` | Admin |
 | GET, POST | `/api/employees` | GET: admin, HR, employee. POST: HR |
@@ -146,7 +146,7 @@ Auth, organization, employees, attendance, leave, payroll, payslips, announcemen
 
 ### Contract notes for leave and payroll
 
-- Leave balance items add `pending`. Pending does not reduce `remaining`. `GET /api/leave/balances` returns `{ year, employeeId, items }`.
+- Leave balance items include `leaveTypeId`, `name`, and `pending`. Pending does not reduce `remaining`. `GET /api/leave/balances` returns `{ year, employeeId, items }`. An employee uses `leaveTypeId` on `POST /api/leave/requests`. `GET /api/leave-types` is read-only for every logged-in role. Create, update, and delete stay admin-only.
 - The owner can cancel while the request is `pending`, or while it is `approved` and `startDate` is after today in Asia/Karachi.
 - Rejecting leave requires `comment`.
 - HR and admin leave rows include `context` (balance before and after, holidays in the range, colleagues in the same department who already have approved leave on those dates, and this employee's approved leave that starts in the same year). Employee responses omit `context`.
@@ -165,7 +165,8 @@ Section 2 lets admin **read** employees, attendance, leave, and payroll. Section
 | Action | Admin | HR | Employee |
 | --- | --- | --- | --- |
 | Setup | Yes | No | No |
-| Settings, departments, designations, leave types, holidays | Manage | View | No |
+| Settings, departments, designations, holidays | Manage | View | No |
+| Leave types | Manage | View | View |
 | Create HR login, deactivate, reset password | Yes | No | No |
 | Register or edit an employee | View | Manage | Own phone and address |
 | Directory and employee 360 | All | All | Own |
@@ -342,7 +343,7 @@ Delete returns `{ "deleted": true }`. Delete is `409` when an employee still poi
 
 | Method | Path | Who | Notes |
 | --- | --- | --- | --- |
-| GET | `/api/leave-types` | Admin, HR | Paged list |
+| GET | `/api/leave-types` | Any logged-in user | Paged list. Read-only for employees |
 | POST | `/api/leave-types` | Admin | `{ name, code, yearlyQuota, paid }`. `yearlyQuota` null means unlimited |
 | PATCH | `/api/leave-types/:id` | Admin | Same fields plus `active`. This is how a quota is edited |
 | DELETE | `/api/leave-types/:id` | Admin | `409` `Leave type is used by leave requests` when a request still points at it |
@@ -445,7 +446,7 @@ This creates the employee and a user with the same email, role `employee`, `must
     "lateArrivals": 0
   },
   "leaveBalances": [
-    { "code": "ANNUAL", "name": "Annual", "paid": true, "quota": 14, "used": 0, "remaining": 14 }
+    { "leaveTypeId": "…", "code": "ANNUAL", "name": "Annual", "paid": true, "quota": 14, "used": 0, "remaining": 14 }
   ],
   "lastPayslip": null
 }
@@ -492,7 +493,7 @@ Rules:
 - `absent` is applied **on read** for a working day on or before today with no attendance row and no approved leave. Future days stay `status: null`. Weekends and holidays are not marked absent.
 - `on_leave` is applied on read when an approved `LeaveRequest` covers the date (`startDate <= date <= endDate`, status `approved`). The leave model is read directly. If both a row and leave exist, the attendance row wins.
 - Working days come from `calendar.service.js`: `settings.weekend` and holidays, tentative included.
-- Check-in is allowed on a weekend or holiday. The day is still stored.
+- Check-in is allowed on a weekend or holiday. The punches are stored with `status: "present"` and `late: false`. A short visit on a non-working day is not `half_day`, and a late arrival that day is not `late`. Payroll only counts working days, so that row is not a deduction.
 - Check-out closes today's open row. If today has no check-in, it closes yesterday's open row so a shift can cross midnight. Check-out does not change `source`.
 - A settings change does not recompute old `late` or `half_day` rows.
 
@@ -589,7 +590,7 @@ Create body: `{ leaveTypeId, startDate, endDate, reason }`. The server calculate
 Balance response:
 
 ```json
-{ "year": 2026, "employeeId": "…", "items": [{ "code": "ANNUAL", "name": "Annual", "paid": true, "quota": 14, "used": 0, "pending": 1, "remaining": 14 }] }
+{ "year": 2026, "employeeId": "…", "items": [{ "leaveTypeId": "…", "code": "ANNUAL", "name": "Annual", "paid": true, "quota": 14, "used": 0, "pending": 1, "remaining": 14 }] }
 ```
 
 Unpaid: `quota` and `remaining` are null. `remaining` ignores `pending`.
@@ -833,7 +834,7 @@ Any logged-in user who has an employee profile. `403` if they do not. Query filt
   "hoursThisWeek": 0,
   "expectedHours": 40,
   "lateCount": 0,
-  "leaveBalances": [{ "code": "ANNUAL", "quota": 14, "used": 0, "remaining": 14 }],
+  "leaveBalances": [{ "leaveTypeId": "…", "code": "ANNUAL", "name": "Annual", "quota": 14, "used": 0, "remaining": 14 }],
   "lastPayslip": null
 }
 ```

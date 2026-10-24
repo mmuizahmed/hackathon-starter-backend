@@ -93,6 +93,7 @@ export async function getLeaveBalances(user, query) {
     const pending = await sumLeaveDays(employeeId, leaveType._id, year, 'pending');
     const unlimited = leaveType.yearlyQuota == null;
     items.push({
+      leaveTypeId: leaveType._id.toString(),
       code: leaveType.code,
       name: leaveType.name,
       paid: leaveType.paid,

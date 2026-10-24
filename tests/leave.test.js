@@ -91,10 +91,44 @@ test('leave balances, overlap, approval context, and cancel rules', { timeout: 1
     const casual = balances.json.data.items.find((item) => item.code === 'CASUAL');
     const annual = balances.json.data.items.find((item) => item.code === 'ANNUAL');
     const unpaidBalance = balances.json.data.items.find((item) => item.code === 'UNPAID');
+    assert.equal(casual.leaveTypeId, byCode.CASUAL);
+    assert.equal(casual.name, 'Casual');
     assert.equal(casual.quota, 10);
     assert.equal(casual.used, 0);
     assert.equal(casual.remaining, 10);
     assert.equal(casual.pending, 1);
+    assert.equal(annual.leaveTypeId, byCode.ANNUAL);
+    assert.equal(annual.name, 'Annual');
+
+    const typeList = await request(base, '/api/leave-types', { cookie: evaCookie });
+    assert.equal(typeList.status, 200, JSON.stringify(typeList.json));
+    const listedCasual = typeList.json.data.items.find((item) => item.code === 'CASUAL');
+    assert.equal(listedCasual.id, casual.leaveTypeId);
+
+    const createType = await request(base, '/api/leave-types', {
+      method: 'POST',
+      cookie: evaCookie,
+      body: { name: 'Extra', code: 'EXTRA', yearlyQuota: 1, paid: true },
+    });
+    assert.equal(createType.status, 403);
+
+    let later = addDays(longEnd, 7);
+    for (let step = 0; step < 7; step += 1) {
+      if (weekdayName(later) !== 'Sat' && weekdayName(later) !== 'Sun') break;
+      later = addDays(later, 1);
+    }
+    const fromBalance = await request(base, '/api/leave/requests', {
+      method: 'POST',
+      cookie: evaCookie,
+      body: {
+        leaveTypeId: casual.leaveTypeId,
+        startDate: later,
+        endDate: later,
+        reason: 'Using the id from balances',
+      },
+    });
+    assert.equal(fromBalance.status, 201, JSON.stringify(fromBalance.json));
+    assert.equal(fromBalance.json.data.leaveType.code, 'CASUAL');
     assert.equal(annual.remaining, 14);
     assert.equal(annual.pending, 0);
     assert.equal(unpaidBalance.quota, null);
