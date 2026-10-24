@@ -53,8 +53,30 @@ function parseEnv() {
     throw new Error('COMPANY_NAME must be at most 120 characters.');
   }
 
-  // Used later by the AI module. The browser never receives this value.
+  // The browser never receives the key. Empty is allowed so the API still boots.
   const aiApiKey = (process.env.AI_API_KEY || '').trim();
+  const aiBaseUrl = (process.env.AI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/openai/').trim();
+  const aiModel = (process.env.AI_MODEL || 'gemini-2.5-flash').trim();
+  const aiRateLimit = Number((process.env.AI_RATE_LIMIT || '20').trim());
+  const aiTimeoutMs = Number((process.env.AI_TIMEOUT_MS || '15000').trim());
+  let parsedAiUrl;
+  try {
+    parsedAiUrl = new URL(aiBaseUrl);
+  } catch {
+    throw new Error('AI_BASE_URL must be a full URL.');
+  }
+  if (parsedAiUrl.protocol !== 'http:' && parsedAiUrl.protocol !== 'https:') {
+    throw new Error('AI_BASE_URL must start with http:// or https://.');
+  }
+  if (!Number.isInteger(aiRateLimit) || aiRateLimit < 1 || aiRateLimit > 1000) {
+    throw new Error('AI_RATE_LIMIT must be a whole number from 1 to 1000.');
+  }
+  if (!Number.isInteger(aiTimeoutMs) || aiTimeoutMs < 1000 || aiTimeoutMs > 60000) {
+    throw new Error('AI_TIMEOUT_MS must be a whole number from 1000 to 60000.');
+  }
+  if (!aiModel) {
+    throw new Error('AI_MODEL must not be empty.');
+  }
 
   return {
     nodeEnv,
@@ -66,6 +88,10 @@ function parseEnv() {
     adminPassword,
     companyName,
     aiApiKey,
+    aiBaseUrl: parsedAiUrl.href.endsWith('/') ? parsedAiUrl.href : `${parsedAiUrl.href}/`,
+    aiModel,
+    aiRateLimit,
+    aiTimeoutMs,
   };
 }
 

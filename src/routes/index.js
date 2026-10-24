@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import aiRoutes from './ai.routes.js';
+import analyticsRoutes from './analytics.routes.js';
 import announcementRoutes from './announcement.routes.js';
 import attendanceRoutes from './attendance.routes.js';
 import auditRoutes from './audit.routes.js';
@@ -38,5 +40,7 @@ router.use('/payroll', payrollRoutes);
 router.use('/payslips', payslipRoutes);
 router.use('/announcements', announcementRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/analytics', analyticsRoutes);
+router.use('/ai', aiRoutes);
 
 export default router;
