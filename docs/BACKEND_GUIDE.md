@@ -9,10 +9,11 @@ src/server.js            starts the process and, if the env admin is set, runs s
 src/app.js               helmet, CORS, JSON, cookie, then the two auth middlewares, then routes
 src/routes/              URL to controller
 src/controllers/         read the request, call one service, send JSON
-src/services/            rules: setup, login, password change, audit, employee scope
+src/services/            rules: setup, login, settings, org, employees, attendance, calendar, audit
 src/models/              MongoDB collections
 src/middleware/          cookie user, password gate, role check, validation, errors
 src/utils/timezone.js    Asia/Karachi dates. Use this. Do not parse dates in a route.
+src/services/calendar.service.js   isWorkingDay, countWorkingDays, listWorkingDays
 ```
 
 A new feature should add a route, a thin controller, and a service. The service is the part the AI assistant will call later, with the same user that `requireAuth` put on the request.
@@ -61,12 +62,11 @@ Data scope is separate from the role. An employee id and a user id are different
 `src/services/scope.service.js`:
 
 - `employeeScopeFilter(user)` returns `{ employee: user.employeeId }` for an employee, and `{}` for admin or HR (no extra filter).
+- Pass a second argument when the id is not stored in a field named `employee`. The employee list uses `employeeScopeFilter(user, '_id')` because that is the employee document's own id.
 - If an employee login has no linked profile, the filter is `{ employee: { $in: [] } }`, which matches nothing. A broken login must not see every row.
-- `assertOwnEmployee(user, employeeId)` throws `403` when an employee asks for someone else's id.
+- `assertOwnEmployee(user, employeeId)` throws `403` `You can only access your own records` when an employee asks for someone else's id.
 
-Later services should spread that filter into `Model.find`. Notifications are the exception: they are stored by **user id**, because every login has one, even HR with no employee profile.
-
-There is no employee data route in this revision. The helper is tested on its own so the next module can use it without inventing a second rule.
+Attendance, corrections, and the employee list use this helper. Notifications are the exception: they are stored by **user id**, because every login has one, even HR with no employee profile.
 
 ## Temporary password
 
@@ -94,7 +94,7 @@ Optional env path: if `ADMIN_EMAIL` and `ADMIN_PASSWORD` are both set, `server.j
 
 `recordAudit({ actorId, action, entity, entityId, before, after })` inserts one row. Call it from the service after a successful change. Do not put `passwordHash` in `before` or `after`.
 
-Login and logout are not audited. Setup, user create, and password change are.
+Login and logout are not audited. Setup, settings, org rows, users, employees, check-in, check-out, and corrections are. The action names are listed in `docs/API.md`. Temporary passwords are not written to the log.
 
 `GET /api/audit` is admin only. Filters: `action`, `entity`, `entityId`, `actor`, `from`, `to`, plus `page` and `limit`.
 
@@ -104,9 +104,31 @@ The model throws if something calls update or delete. There is no such route. Th
 
 Store business dates as `YYYY-MM-DD` strings from `src/utils/timezone.js`. Pakistan is UTC+5 all year. A check-in at 00:30 in Karachi must not be saved as the previous UTC date. `checkIn` and `checkOut` are real timestamps. The server sets them. Do not trust a time sent by the browser.
 
+## Working days
+
+`src/services/calendar.service.js` answers three questions for the rest of the app:
+
+- `isWorkingDay('2026-10-27')`
+- `countWorkingDays('2026-10-24', '2026-10-27')`
+- `listWorkingDays('2026-10-24', '2026-10-27')`
+
+It loads the company weekend and the holidays in that range. A tentative holiday is still a day off. Leave and payroll should import these functions instead of repeating the rule.
+
+## Check-in
+
+`checkIn` and `checkOut` in `src/services/attendance.service.js` use `new Date()` unless a test passes a clock. The route does not read a time from the body.
+
+One employee, one Karachi day. The second check-in is `409` `Already checked in today`. Late means the timestamp is **after** office start plus grace, so 09:15 is present and 09:16 is late when the office starts at 09:00 and grace is 15 minutes. A checkout shorter than `halfDayHours` becomes `half_day`. The `late` flag stays true if the arrival was late.
+
+`missing_checkout` and `absent` are decided when a list, board, or calendar is read. Past open rows show `missing_checkout`. A working day on or before today with no row and no approved leave shows `absent`. An approved leave request covering that date shows `on_leave`. Saving settings later does not walk back through old rows and change `late`.
+
+## Camera check-in
+
+The same check-in route accepts `source: "camera"` with `lat`, `lng`, `accuracy`, and `faceCount`. The server rejects a face count other than 1, accuracy worse than 100 meters, or a Haversine distance outside `settings.radiusMeters`. The stored row keeps the coordinates and the distance. It does not keep a photo. A rejected camera call does not insert a row.
+
 ## What is not built
 
-Department screens, employee registration, check-in, leave approval, payroll, dashboards, announcements, and the AI chat. The collections and the URL contract are already in the repo so those pieces can be added without changing these schemas for style.
+Leave approval, payroll, dashboards, announcements, and the AI chat. Those collections already exist. Leave and payroll should import `calendar.service.js` and should not remount the routes this revision added in `src/routes/index.js`.
 
 The AI module must call these services with `req.user`. It must not query MongoDB with its own rules, and it must not see `AI_API_KEY` in the browser.
 
@@ -121,8 +143,20 @@ The token only proves who signed in. Role, `active`, and `mustChangePassword` ca
 **What happens on a brand new database?**
 `/api/setup/status` says `initialized: false`. No employees, no leave types, no admin. Setup creates the company, the four leave quotas, and one admin. It cannot run twice.
 
-**How do you stop an employee from opening someone else's salary?**
-The route will use `assertOwnEmployee` or `employeeScopeFilter`. Both compare the employee id on the row with `req.user.employeeId`, which is not the login id. Admin and HR skip that filter. This revision has the helper and the test. The salary route is not built yet.
+**How do you stop an employee from opening someone else's record?**
+`GET /api/employees/:id` calls `assertOwnEmployee`. The employee list uses `employeeScopeFilter(user, '_id')`. Both compare the employee id with `req.user.employeeId`, which is not the login id. Admin and HR skip that filter. The same helper covers attendance and corrections. Payslips will use it when payroll is added.
+
+**Why is a second check-in 409?**
+The service looks up the employee and today's Karachi date before it inserts. The collection also has a unique index on employee plus date, so two requests at the same moment still cannot create two rows.
+
+**Why is 09:15 present and 09:16 late?**
+Late means strictly after office start plus grace. With 09:00 and 15 minutes, 09:15 is still inside the window. 09:16 is one minute past it. The comparison uses the Karachi wall clock converted to UTC.
+
+**Why can HR read settings but not change them?**
+`GET /api/settings` allows admin and HR. `PUT /api/settings` allows admin only. The role check runs before the service. A settings save also does not rewrite attendance rows that were already marked late.
+
+**What does a CSV dry run return?**
+`POST /api/employees/import` writes nothing unless the query is exactly `dryRun=false`. Errors stay in the 200 body as `{ row, field, reason }`. A commit runs only when that list is empty, and it returns each temporary password once.
 
 **What does `mustChangePassword` block?**
 Every path except health, setup, login, logout, me, and change password. The check is in one middleware in `app.js`, so a new module route is blocked too.

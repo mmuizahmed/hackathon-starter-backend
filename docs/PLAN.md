@@ -5,9 +5,9 @@ Judges start from an empty database. Nothing in this repo inserts sample employe
 | Module | Status | In this revision | Next |
 | --- | --- | --- | --- |
 | M1 Auth and access | Foundation done | Setup, login, logout, me, change password, role guard, password gate, employee scope helper | Menus are frontend |
-| M2 Organization | Models only | Settings, departments, designations, leave types, holidays | CRUD routes in `docs/API.md` |
-| M3 Employees | Models only | Employee and user link fields | Register, search, CSV |
-| M4 Attendance | Models only | One row per employee per Karachi day | Check-in, corrections |
+| M2 Organization | Done | Settings GET/PUT, departments, designations, leave-type quotas, holidays, HR user admin. `calendar.service.js` is the shared working-day API | Leave requests stay in M5 |
+| M3 Employees | Done | Register with a one-time temp password, search, filters, paging, employee 360, exit, CSV dry run and export | |
+| M4 Attendance | Done | Check-in and check-out, camera checks, daily board, month calendar, corrections | Payroll still reads these rows later |
 | M5 Leave | Models only | Requests and the four default types (created at setup, not at boot) | Apply, balance, approve |
 | M6 Payroll | Models only | Salary structure, run, payslip breakdown shape | Draft, tax, PDF, finalize |
 | M7 Dashboards | Not started | Formulas are in `docs/API.md` | Aggregate on the server |

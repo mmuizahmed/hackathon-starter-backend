@@ -44,9 +44,9 @@ Passwords are 8 to 72 characters. bcrypt only uses the first 72 bytes.
 | --- | --- |
 | 400 | Validation, or the current password is wrong on change-password |
 | 401 | Missing or bad cookie, or wrong login password. Message: `Authentication required` or `Invalid email or password` |
-| 403 | `Account is deactivated`, `Password change required`, `You do not have access to this resource`, `You can only access your own records` |
-| 409 | Setup already done, second check-in of the day, or a duplicate unique field |
-| 422 | Leave overlap or not enough balance (planned) |
+| 403 | `Account is deactivated`, `Password change required`, `You do not have access to this resource`, `You can only access your own records`, `You can only change your phone and address` |
+| 409 | Setup already done, `Already checked in today`, a duplicate unique field, or deleting a department, designation, or leave type that is still in use |
+| 422 | Camera check-in rejected. Leave overlap or not enough balance is still planned |
 | 429 | Login rate limit. Message: `Too many login attempts. Try again later.` |
 
 Login allows 10 attempts per 15 minutes per IP.
@@ -80,6 +80,8 @@ Public user:
 
 ## Implemented in this revision
 
+Auth, organization, employees, and attendance. Leave requests, payroll, dashboards, AI, announcements, and notifications are still planned.
+
 | Method | Path | Who |
 | --- | --- | --- |
 | GET | `/api/health` | Public |
@@ -89,6 +91,25 @@ Public user:
 | POST | `/api/auth/logout` | Public |
 | GET | `/api/auth/me` | Any logged-in user |
 | POST | `/api/auth/change-password` | Any logged-in user |
+| GET | `/api/settings` | Admin, HR |
+| PUT, PATCH | `/api/settings` | Admin |
+| GET, POST, PATCH, DELETE | `/api/departments` | GET: admin, HR. Writes: admin |
+| GET, POST, PATCH, DELETE | `/api/designations` | GET: admin, HR. Writes: admin |
+| GET, POST, PATCH, DELETE | `/api/leave-types` | GET: admin, HR. Writes: admin |
+| GET, POST, PATCH, DELETE | `/api/holidays` | GET: admin, HR. Writes: admin |
+| GET, POST, PATCH | `/api/users` | Admin |
+| GET, POST | `/api/employees` | GET: admin, HR, employee. POST: HR |
+| GET | `/api/employees/:id` | Admin, HR, employee (own) |
+| PATCH | `/api/employees/:id` | HR, employee (own phone and address) |
+| POST | `/api/employees/import` | HR |
+| GET | `/api/employees/export` | HR |
+| POST | `/api/attendance/check-in` | HR, employee |
+| POST | `/api/attendance/check-out` | HR, employee |
+| GET | `/api/attendance` | Admin, HR, employee (own) |
+| GET | `/api/attendance/board` | Admin, HR |
+| GET | `/api/attendance/calendar` | Admin, HR, employee (own) |
+| GET, POST | `/api/attendance/corrections` | GET: all three roles. POST: HR, employee |
+| POST | `/api/attendance/corrections/:id/review` | HR |
 | GET | `/api/audit` | Admin |
 
 ## Role rules used for the planned routes
@@ -104,7 +125,8 @@ Section 2 lets admin **read** employees, attendance, leave, and payroll. Section
 | Directory and employee 360 | All | All | Own |
 | CSV import and export | No | Yes | No |
 | Web check-in and check-out | No | Own, if they have an employee id | Own |
-| Attendance board | All | All | Own |
+| Attendance daily board | Yes | Yes | No |
+| Attendance month calendar | Any employee | Any employee | Own |
 | Attendance correction | View | Approve | Request own |
 | Apply, cancel, balance | View records | Own, and view all requests | Own |
 | Approve leave | View | Approve | No |
@@ -218,9 +240,17 @@ Needs the cookie.
 
 Clears `mustChangePassword`. Returns `data.user`. Wrong current password: `400` `Current password is incorrect`.
 
-## M2 Organization — planned
+## M2 Organization — implemented
 
-Settings rules apply to **new** attendance, leave, and payroll records. Do not rewrite old rows when settings change.
+Settings rules apply to **new** attendance, leave, and payroll records. Changing settings does not rewrite the status already stored on old attendance rows.
+
+`src/services/calendar.service.js` is the shared working-day API. Leave, payroll, and dashboards should import these three functions and not copy the weekend or holiday check:
+
+- `isWorkingDay(dateStr)` returns a boolean.
+- `countWorkingDays(startStr, endStr)` returns a number.
+- `listWorkingDays(startStr, endStr)` returns `YYYY-MM-DD` strings.
+
+A day is not a working day when it is in `settings.weekend` or it is a holiday. Tentative holidays count. An empty weekend list means there is no weekend. `start` after `end` returns `[]` or `0`. Dates must be `YYYY-MM-DD`.
 
 Settings JSON:
 
@@ -242,48 +272,60 @@ Settings JSON:
 | Method | Path | Who | Body |
 | --- | --- | --- | --- |
 | GET | `/api/settings` | Admin, HR | |
-| PATCH | `/api/settings` | Admin | Any of the fields above except `id` |
+| PUT | `/api/settings` | Admin | Any of the fields above except `id`. At least one field. |
+| PATCH | `/api/settings` | Admin | Same handler as PUT. PUT is the contract. |
+
+`officeLat` and `officeLng` must be sent together. The write is audited as `settings.update`. HR who calls PUT or PATCH gets `403` `You do not have access to this resource`.
 
 | Method | Path | Who | Body |
 | --- | --- | --- | --- |
-| GET | `/api/departments` | Admin, HR | List |
+| GET | `/api/departments` | Admin, HR | Paged list. `?active=true` or `active=false` |
 | POST | `/api/departments` | Admin | `{ "name": "Engineering" }` |
 | PATCH | `/api/departments/:id` | Admin | `{ "name": "Engineering", "active": true }` |
-| GET | `/api/designations` | Admin, HR | List |
+| DELETE | `/api/departments/:id` | Admin | |
+| GET | `/api/designations` | Admin, HR | Paged list. Same `active` filter |
 | POST | `/api/designations` | Admin | `{ "name": "Engineer" }` |
 | PATCH | `/api/designations/:id` | Admin | `{ "name": "Engineer", "active": true }` |
+| DELETE | `/api/designations/:id` | Admin | |
 
-Department and designation item: `{ id, name, active, createdAt, updatedAt }`. Names are unique.
+Department and designation item: `{ id, name, active, createdAt, updatedAt }`. Names are unique. A duplicate name is `409`.
+
+Delete returns `{ "deleted": true }`. Delete is `409` when an employee still points at the row: `Department is assigned to employees` or `Designation is assigned to employees`.
 
 | Method | Path | Who | Notes |
 | --- | --- | --- | --- |
-| GET | `/api/leave-types` | Admin, HR | |
+| GET | `/api/leave-types` | Admin, HR | Paged list |
 | POST | `/api/leave-types` | Admin | `{ name, code, yearlyQuota, paid }`. `yearlyQuota` null means unlimited |
-| PATCH | `/api/leave-types/:id` | Admin | Same fields plus `active` |
-| GET | `/api/holidays` | Admin, HR | `?year=2026` optional |
+| PATCH | `/api/leave-types/:id` | Admin | Same fields plus `active`. This is how a quota is edited |
+| DELETE | `/api/leave-types/:id` | Admin | `409` `Leave type is used by leave requests` when a request still points at it |
+| GET | `/api/holidays` | Admin, HR | `?year=2026` optional. Paged |
 | POST | `/api/holidays` | Admin | `{ date, name, tentative }` |
 | PATCH | `/api/holidays/:id` | Admin | Same fields |
-| DELETE | `/api/holidays/:id` | Admin | Mistyped holidays only. Write an audit row |
+| DELETE | `/api/holidays/:id` | Admin | Mistyped holidays. Audited |
 
 `tentative: true` is a moon-sighting holiday. It still counts as a holiday until someone edits it.
 
-Holiday item: `{ id, date, name, tentative }`.
+Holiday item: `{ id, date, name, tentative, createdAt, updatedAt }`. Leave type item: `{ id, name, code, yearlyQuota, paid, active, createdAt, updatedAt }`.
 
-### Users — planned
+Creates return 201. Every create, update, and delete writes an audit row. Password hashes are never in the snapshot.
+
+### Users — implemented
 
 Admin only. This creates **HR** logins. Employee logins are created by `POST /api/employees`. This route does not create another admin.
 
 | Method | Path | Body / query |
 | --- | --- | --- |
 | GET | `/api/users` | `?role&active&page&limit` |
-| POST | `/api/users` | `{ name, email, password }` role is forced to `hr`, `mustChangePassword` true |
+| POST | `/api/users` | `{ name, email, password, role? }` |
 | PATCH | `/api/users/:id` | `{ active?: boolean, resetPassword?: boolean }` |
 
-When `resetPassword` is true, the response includes `temporaryPassword` once and sets `mustChangePassword` true. Do not return `passwordHash`.
+`role` may be omitted or `hr`. `role: "admin"` is `400` `Admin users cannot be created through the API`. `role: "employee"` is `400` `Create employees with POST /api/employees`. The saved role is always `hr`, `mustChangePassword` is true, and the response is `{ user, temporaryPassword }` where `temporaryPassword` is the password that was sent. It is returned once.
+
+`resetPassword: true` generates a new temporary password, sets `mustChangePassword` true, and returns `temporaryPassword` once. `active: false` deactivates the login. `active: true` turns it back on. An admin cannot deactivate their own login: `400` `You cannot deactivate your own login`. Do not return `passwordHash`.
 
 User list item is the public user plus `active`.
 
-## M3 Employees — planned
+## M3 Employees — implemented
 
 Employee JSON:
 
@@ -312,10 +354,10 @@ Employee JSON:
 | --- | --- | --- |
 | GET | `/api/employees` | Admin and HR: all. Employee: only their row. Query `search`, `departmentId`, `designationId`, `status`, `page`, `limit` |
 | POST | `/api/employees` | HR |
-| GET | `/api/employees/:id` | Admin and HR: any. Employee: own, else 403 |
-| PATCH | `/api/employees/:id` | HR: all editable fields. Employee: `phone` and `address` only. Admin: 403 |
-| POST | `/api/employees/import` | HR. Multipart field `file`. `?dryRun=true` writes nothing |
-| GET | `/api/employees/export` | HR. `text/csv` |
+| GET | `/api/employees/:id` | Employee 360. Admin and HR: any. Employee: own, else 403 `You can only access your own records` |
+| PATCH | `/api/employees/:id` | HR: all editable fields. Employee: `phone` and `address` only, else 403 `You can only change your phone and address`. Admin: 403 |
+| POST | `/api/employees/import` | HR. Multipart field `file`, or JSON `{ "csv": "..." }`. See dry run below |
+| GET | `/api/employees/export` | HR. `text/csv`. Honors the same filters as the list. No JSON envelope |
 
 `POST /api/employees` body:
 
@@ -335,52 +377,99 @@ Employee JSON:
 }
 ```
 
-This creates the employee and a user with the same email, role `employee`, `mustChangePassword: true`, and a temporary password. Response includes `employee` and `temporaryPassword` once.
+This creates the employee and a user with the same email, role `employee`, `mustChangePassword: true`, and a temporary password. Response is `201` and includes `employee` and `temporaryPassword` once so HR can hand the password over. It is not stored in the audit log.
+
+`status: "exited"`, or a sent `exitDate`, sets `status` to `exited`, stores `exitDate` (today in Karachi when the date is omitted), and sets the linked login `active: false`. Setting status back to `active` or `probation` clears `exitDate` and turns the login on again.
+
+`GET /api/employees/:id` is the employee 360 view, not a flat employee:
+
+```json
+{
+  "employee": { "id": "…", "name": "Eva" },
+  "attendanceThisMonth": {
+    "month": "2026-10",
+    "present": 0,
+    "late": 0,
+    "halfDay": 0,
+    "missingCheckout": 0,
+    "absent": 0,
+    "onLeave": 0,
+    "lateArrivals": 0
+  },
+  "leaveBalances": [
+    { "code": "ANNUAL", "name": "Annual", "paid": true, "quota": 14, "used": 0, "remaining": 14 }
+  ],
+  "lastPayslip": null
+}
+```
+
+`leaveBalances` reads leave types and approved leave requests for the Karachi year. `quota` and `remaining` are null when the quota is unlimited. `lastPayslip` is `{ id, month, net }` or null. If a leave or payslip read fails because that module is not ready, that field is null and the profile still loads. List items stay the flat employee shape.
+
+The list `search` matches name, code, or email on the server. Employees only receive their own row. The filter uses the employee document `_id`, because that collection has no field named `employee`.
 
 CSV columns: `code,name,email,phone,address,department,designation,joinDate,status,gender,basicSalary`.
 
-Dry run:
+Department and designation are matched by name, ignoring case. Checks: required code, name, email, department, designation, join date, and salary; unique code and email in the file and in the database; email shape; a known department and designation; a real `YYYY-MM-DD` date; salary greater than 0 (and at least 1); status `active` or `probation`.
+
+Dry run is the safe default. The write runs only when the query is exactly `dryRun=false`. The HTTP status is 200 even when `ok` is false. Nothing is written while `dryRun` is true or `errors` is not empty.
 
 ```json
 {
   "success": true,
   "data": {
     "ok": false,
+    "dryRun": true,
     "validRows": 1,
-    "errors": [{ "row": 2, "field": "email", "reason": "Email already exists" }]
+    "errors": [{ "row": 2, "field": "email", "reason": "Email is invalid" }]
   }
 }
 ```
 
-Check required fields, unique code and email, email shape, known department and designation names, ISO `joinDate`, and `basicSalary > 0`. `dryRun=false` writes only when `errors` is empty.
+A commit adds `created` and `temporaryPasswords`: `[{ "row": 2, "email": "eva@example.com", "temporaryPassword": "Temp-…" }]`. Those passwords are returned once.
 
-Search is server-side. Do not return the whole collection for the client to filter.
+## M4 Attendance — implemented
 
-## M4 Attendance — planned
-
-Stored statuses: `present`, `late`, `half_day`, `missing_checkout`. `absent` and `on_leave` are calculated for a day with no row, or with approved leave. The enum allows saving them if a correction needs it.
+Stored statuses: `present`, `late`, `half_day`, `missing_checkout`. `absent` and `on_leave` are calculated when the board or calendar is read. The enum allows saving them if a correction needs it.
 
 `late` is its own boolean. A day can be `half_day` and `late: true`.
 
-Rules, using the settings copied at check-in time:
+The server stamps `checkIn` and `checkOut` with its own clock. A time in the check-in body is ignored. Routes never accept a client clock.
 
-- One row per employee per Karachi date. A second check-in is `409`.
-- Late when check-in is **after** `officeStart + graceMinutes` (09:15 is on time if start is 09:00 and grace is 15).
-- `half_day` when worked hours are under `halfDayHours` (default 5). Half day wins over `present` / `late` as the status. Keep `late` true if the arrival was late.
-- `missing_checkout` when there is a check-in and no check-out at the time the board or payroll is built.
-- `absent` when there is no row and no approved leave on that working day.
-- Weekend days come from settings. Holidays, including tentative ones, are not working days.
+Rules:
+
+- One row per employee per Karachi date. A second check-in is `409` `Already checked in today`.
+- Late when check-in is **after** `officeStart + graceMinutes`. With start `09:00` and grace `15`, `09:15` is `present` and `09:16` is `late`.
+- `half_day` when worked minutes are under `halfDayHours * 60` (default 5 hours). Half day wins over `present` / `late` as the status. Keep `late` true if the arrival was late.
+- `missing_checkout` is applied **on read** for a past day (`date` before today in Karachi) that has a check-in and no check-out. Today stays `present` or `late` until the day ends. The stored row is not rewritten.
+- `absent` is applied **on read** for a working day on or before today with no attendance row and no approved leave. Future days stay `status: null`. Weekends and holidays are not marked absent.
+- `on_leave` is applied on read when an approved `LeaveRequest` covers the date (`startDate <= date <= endDate`, status `approved`). The leave model is read directly. If both a row and leave exist, the attendance row wins.
+- Working days come from `calendar.service.js`: `settings.weekend` and holidays, tentative included.
+- Check-in is allowed on a weekend or holiday. The day is still stored.
+- Check-out closes today's open row. If today has no check-in, it closes yesterday's open row so a shift can cross midnight. Check-out does not change `source`.
+- A settings change does not recompute old `late` or `half_day` rows.
 
 | Method | Path | Who | Body / query |
 | --- | --- | --- | --- |
-| POST | `/api/attendance/check-in` | HR or employee who has `employeeId`. Admin 403 | `{ "source": "web" }` or camera body below |
-| POST | `/api/attendance/check-out` | Same | `{ "source": "web" }` |
-| GET | `/api/attendance` | Admin and HR: all. Employee: forced to own id | `from`, `to`, `employeeId`, `departmentId`, `status`, `page`, `limit` |
+| POST | `/api/attendance/check-in` | HR or employee who has `employeeId`. Admin 403 | `{ "source": "web" }` or camera body below. `source` defaults to `web` |
+| POST | `/api/attendance/check-out` | Same | Body may be `{}` |
+| GET | `/api/attendance` | Admin and HR: all. Employee: own rows | `from`, `to`, `employeeId`, `departmentId`, `status`, `page`, `limit` |
+| GET | `/api/attendance/board` | Admin, HR. Employee 403 | `date` (default today), `departmentId` |
+| GET | `/api/attendance/calendar` | Employee: own month. Admin and HR must pass `employeeId` | `month=YYYY-MM` (default this month), `employeeId` |
 | POST | `/api/attendance/corrections` | Employee or HR for themselves | `{ date, requestedCheckIn, requestedCheckOut, reason }` |
 | GET | `/api/attendance/corrections` | Admin and HR: all. Employee: own | `status`, `page`, `limit` |
 | POST | `/api/attendance/corrections/:id/review` | HR | `{ "decision": "approved", "comment": "…" }` decision is `approved` or `rejected` |
 
-Camera body (optional bonus). The server decides. The client only sends measurements.
+`GET /api/attendance` returns stored rows only. It overlays `missing_checkout` on past open rows, then applies the `status` filter. It does not invent `absent` or `on_leave` rows. The query reads at most 2000 matching rows before paging.
+
+The daily board includes people who had joined by that date and had not exited before it. Each item is the employee (`employeeId`, `name`, `code`, `department`) plus the day (`status`, `late`, `checkIn`, `checkOut`, `source`, `attendanceId`, `workingDay`). Absent and on-leave people are included.
+
+The month calendar returns `{ month, employeeId, days }`. Each day has `date`, `workingDay`, `status`, `late`, `checkIn`, `checkOut`, `source`, and `attendanceId`.
+
+Camera check-in uses the same `POST /api/attendance/check-in`. Send either the flat body or the nested one:
+
+```json
+{ "source": "camera", "lat": 24.86, "lng": 67.01, "accuracy": 20, "faceCount": 1 }
+```
 
 ```json
 {
@@ -390,7 +479,20 @@ Camera body (optional bonus). The server decides. The client only sends measurem
 }
 ```
 
-Reject when `faceCount` is not 1, accuracy is worse than 100 meters, office lat/lng is missing, or the Haversine distance to the office is greater than `radiusMeters`. Store the result, not a photo. `source` is `camera`. A failed camera check does not write a present row. The person asks HR for a correction.
+`accuracy` and `accuracyMeters` are meters. The server computes the Haversine distance to `officeLat` / `officeLng`. It stores `location` (including `distanceMeters` and `withinRadius`) and `faceCount`. It never stores a photo.
+
+A failed camera check writes nothing. `422` messages:
+
+| Check | Message |
+| --- | --- |
+| `faceCount` is not 1 | `Exactly one face must be in the frame` |
+| accuracy greater than 100 | `GPS accuracy must be 100 meters or better` |
+| distance greater than `radiusMeters` | `You are outside the office area` |
+| office lat/lng is missing | `Office location is not set` |
+
+Missing camera fields are `400` `Camera check-in needs lat, lng, accuracy, and faceCount`.
+
+Corrections: `date` cannot be in the future. At least one of `requestedCheckIn` and `requestedCheckOut` is required. A time is `HH:mm` in Karachi or an ISO timestamp. HR review with `approved` updates or creates the attendance row for that employee and date, sets `source` to `correction`, and recalculates status from the **current** settings. `rejected` leaves attendance unchanged. The review response is `{ correction, attendance }`. Both the request and the review are audited. A second review is `409` `Correction has already been reviewed`.
 
 Attendance item:
 
@@ -686,7 +788,9 @@ Admin only. Query: `page`, `limit`, `action`, `entity`, `entityId`, `actor` (use
 
 There is no POST, PATCH, or DELETE. Services call `recordAudit` in `src/services/audit.service.js`.
 
-Actions written today: `setup.complete`, `user.create`, `user.password_change`. Later modules should add `employee.create`, `employee.update`, `leave.review`, `attendance.review`, `payroll.finalize`, and `settings.update`, with `before` and `after` snapshots and no password hashes.
+Actions written today: `setup.complete`, `user.create`, `user.update`, `user.password_change`, `settings.update`, `department.create`, `department.update`, `department.delete`, `designation.create`, `designation.update`, `designation.delete`, `leaveType.create`, `leaveType.update`, `leaveType.delete`, `holiday.create`, `holiday.update`, `holiday.delete`, `employee.create`, `employee.update`, `attendance.check_in`, `attendance.check_out`, `attendanceCorrection.create`, `attendanceCorrection.review`.
+
+Later modules should add `leave.review` and `payroll.finalize`, with `before` and `after` snapshots and no password hashes. Temporary passwords are not written to the log.
 
 ### Announcements — planned
 
