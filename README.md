@@ -2,7 +2,7 @@
 
 Backend for the Saylani HCM Lite hackathon. Express and MongoDB, plain JavaScript, Node 22. The React app is a separate repo. It proxies `/api/*` to this server, so the login cookie is first-party.
 
-This revision is the foundation: company setup, login, role checks, every collection the later modules need, and a read-only audit log. Employees, attendance, leave, payroll, dashboards, and AI are not built yet. There is no seed data. A fresh database stays empty until someone finishes setup.
+This revision covers company setup, login, organization settings, employees, and attendance. Leave, payroll, dashboards, and AI are not built yet. There is no seed data. A fresh database stays empty until someone finishes setup.
 
 Read these before changing the API:
 
@@ -75,7 +75,7 @@ The process checks these values before it listens. A bad value stops startup wit
 | --- | --- |
 | `npm run dev` | Starts the API with `node --watch`. |
 | `npm start` | Starts the API once. Use this in production. |
-| `npm test` | Health, Karachi dates, setup, login, password gate, role guard, employee scope, audit. |
+| `npm test` | Health, Karachi dates, setup, login, password gate, role guard, employee scope, audit, working days, employees, CSV dry run, and attendance. |
 
 ## Response shape
 
@@ -111,7 +111,11 @@ Do not set `ADMIN_EMAIL` unless you want the admin created on boot. Do not commi
 
 - First-run setup, login, logout, current user, change password
 - Role check, employee data-scope helper, temporary-password block
+- Company settings, departments, designations, leave-type quotas, holidays, and HR logins
+- Shared working-day helpers in `src/services/calendar.service.js`
+- Employee register, search, employee 360, exit, and CSV import/export
+- Attendance check-in and check-out, camera checks, daily board, month calendar, and corrections
 - Mongoose models for every collection
 - Audit log write helper and admin-only `GET /api/audit`
 
-Organization CRUD, employees, attendance, leave, payroll, dashboards, announcements, and AI are specified in `docs/API.md` and not implemented in this revision.
+Leave requests, payroll, dashboards, announcements, and AI are specified in `docs/API.md` and not implemented in this revision.

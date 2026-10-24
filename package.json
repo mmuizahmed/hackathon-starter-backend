@@ -2,7 +2,7 @@
   "name": "hackathon-starter-backend",
   "version": "1.0.0",
   "private": true,
-  "description": "HCM Lite API. This revision covers setup, auth, models, and the audit log.",
+  "description": "HCM Lite API. This revision covers setup, auth, organization, employees, attendance, and the audit log.",
   "type": "module",
   "engines": {
     "node": ">=22 <23"
@@ -23,6 +23,7 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^8.9.5",
     "morgan": "^1.10.0",
+    "multer": "^2.5.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
