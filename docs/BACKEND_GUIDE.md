@@ -1,6 +1,6 @@
 # How this backend works
 
-This is the map for the demo and for interview questions. The code is plain JavaScript. Business rules live in services. Routes do not talk to MongoDB themselves.
+This is a map of the backend. The code is plain JavaScript. Business rules live in services. Routes do not talk to MongoDB themselves.
 
 ## Folder
 
@@ -185,76 +185,3 @@ Ali joins on 15 October 2026. October still has 22 working days, but he is emplo
 HR can build the draft while data is still messy. `GET /api/payroll/runs/:id/checks` lists four problems: no salary structure covering the month end, a missing check-out, pending leave that overlaps the month, and a pending attendance correction in the month. Admin finalize returns `422` until those lists are empty. Admin can send `override: true` and a reason. That reason is the audit `after.reason`. HR cannot finalize (`403`). After `finalized`, regenerate returns `409`. Each payslip then notifies that employee's login.
 
 `summarizeEmployeeAttendance(employeeId, from, to)` is the attendance count used above, and the one analytics and the AI attendance tools use. It follows the attendance board: a stored row wins, approved leave covers a day with no row, and a day after today is not an absence yet.
-
-### Interview questions
-
-**Why does leave skip Saturday and a holiday in the middle of the request?**
-The brief pays and quotas working days. `countWorkingDays` drops the weekend from settings and every holiday, including a tentative one. Friday to Monday with Monday as a holiday is 1 day, not 4.
-
-**Why can two pending requests together exceed the quota?**
-Pending does not reserve the balance. The second request is still allowed if each one fits the approved remainder. The approve step checks again, and the second approval is `422` if the first one used the days. The inbox shows `before` and `after` so HR can see that before they click.
-
-**Why is tax not reduced when someone is absent?**
-The slab is on the monthly structure × 12. Absence is a deduction from pay, not a change of salary. A joiner's tax is scaled by employed days / working days, because they were not on that structure for the whole month. It is not scaled by how many of those days they attended.
-
-**Why can HR prepare payroll but not lock it?**
-The brief says only Admin finalizes. The route and `finalizePayrollRun` both require `admin`. HR gets `403`. The lock is the `finalized` status: generate refuses with `409`, so the payslip numbers cannot move after people have been told they were paid.
-
-**What does override do?**
-It lets Admin lock a month that still has missing salaries, missing check-outs, or pending leave and corrections. The reason is required and is written to the audit log. It does not invent payslips for people who have no structure.
-
-**Why is the formula stored on the payslip?**
-The screen, the PDF, and the future assistant all read `breakdown`. They do not recompute. A later change to tax settings does not rewrite a finalized month.
-
-**How does an employee download only their own PDF?**
-`renderPayslipPdf` loads the payslip and calls `assertOwnEmployee`. A different employee id throws `403` with `You can only access your own records`. The file is built with pdfkit from that same breakdown.
-
-## Interview questions
-
-**Why is the token in an httpOnly cookie?**
-So a script on the page cannot read it. The Vercel proxy makes the cookie first-party. The JSON body never includes the token.
-
-**Why do you reload the user on every request instead of trusting the JWT role?**
-The token only proves who signed in. Role, `active`, and `mustChangePassword` can change while the token is still valid. Those fields come from MongoDB.
-
-**What happens on a brand new database?**
-`/api/setup/status` says `initialized: false`. No employees, no leave types, no admin. Setup creates the company, the four leave quotas, and one admin. It cannot run twice.
-
-**How do you stop an employee from opening someone else's record?**
-`GET /api/employees/:id` calls `assertOwnEmployee`. The employee list uses `employeeScopeFilter(user, '_id')`. Both compare the employee id with `req.user.employeeId`, which is not the login id. Admin and HR skip that filter. The same helper covers attendance, corrections, and payslips. Salary structures are admin and HR only, so an employee gets `403` before a salary query. `GET /api/payslips/:id` and the PDF download both call `assertOwnEmployee`, so a colleague's id returns `403`.
-
-**Why is a second check-in 409?**
-The service looks up the employee and today's Karachi date before it inserts. The collection also has a unique index on employee plus date, so two requests at the same moment still cannot create two rows.
-
-**Why is 09:15 present and 09:16 late?**
-Late means strictly after office start plus grace. With 09:00 and 15 minutes, 09:15 is still inside the window. 09:16 is one minute past it. The comparison uses the Karachi wall clock converted to UTC.
-
-**Why can HR read settings but not change them?**
-`GET /api/settings` allows admin and HR. `PUT /api/settings` allows admin only. The role check runs before the service. A settings save also does not rewrite attendance rows that were already marked late.
-
-**What does a CSV dry run return?**
-`POST /api/employees/import` writes nothing unless the query is exactly `dryRun=false`. Errors stay in the 200 body as `{ row, field, reason }`. A commit runs only when that list is empty, and it returns each temporary password once.
-
-**What does `mustChangePassword` block?**
-Every path except health, setup, login, logout, me, and change password. The check is in one middleware in `app.js`, so a new module route is blocked too.
-
-**Can admin edit the audit log?**
-No. `GET /api/audit` is the only audit route, and the schema rejects updates and deletes. Password hashes are not stored in the log.
-
-**Where does the payroll formula live?**
-In `src/services/payrollMath.js`, which does no database work. `payroll.service.js` loads attendance, leave, and the salary row, then calls `buildPayslipFigures`. The payslip stores a `breakdown` with the inputs, each line, and the tax slab math. The PDF prints those same lines.
-
-**Why are attendance dates strings?**
-They are Karachi calendar days. Timestamps alone shift the day when the server is in UTC. `src/utils/timezone.js` is the only place that converts.
-
-**What if `JWT_SECRET` is missing?**
-The process exits before it listens, with `Configuration error:`. Render already has this variable set.
-
-**How does the AI follow roles?**
-The chat route takes `req.user` and calls the same services as the REST routes. `runTool` calls `assertOwnEmployee` before `getPayrollSummary` or `getPayslip`. An employee who asks for a colleague's salary gets `You can only access your own records`. That sentence is what the model sees. The payslip is never loaded, so the number cannot leak into the prompt. The model has no MongoDB connection string, and `AI_API_KEY` stays in `env` on the server.
-
-**Why can't the assistant invent a colleague's salary?**
-Scope runs in code, before the tool result is built. The system prompt also says to stop when a tool refuses, but the prompt is not the lock. Even a model that ignores the prompt only receives `{ refused: true }`.
-
-**Why is the Bradford list not machine learning?**
-Each flag is a rule you can read out loud: spells squared times days, Monday or Friday share, or days next to a holiday. The attrition score adds 25, 25, 25, 15, and 10 for the five drivers and stops at 100. There is no trained model and no hidden weight.
