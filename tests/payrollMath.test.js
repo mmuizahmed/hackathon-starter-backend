@@ -137,3 +137,103 @@ test('a mid-month joiner is paid for employed working days only', () => {
   const parts = slip.breakdown.earnings;
   assert.equal(roundMoney(parts.basic + parts.hra + parts.medical + parts.otherAllowances), parts.gross);
 });
+
+// October 2026 has 22 working days. One Thursday holiday leaves 21.
+// per day = round(150000 / 21) = 7142.86. A full-month employee is not prorated.
+test('a holiday changes the per-day rate and a half day deducts half of it', () => {
+  const slip = buildPayslipFigures({
+    basic: 100000,
+    hra: 40000,
+    medical: 10000,
+    other: 0,
+    monthWorkingDays: 21,
+    employedWorkingDays: 21,
+    attendance: {
+      presentDays: 20,
+      lateDays: 0,
+      halfDays: 1,
+      absentDays: 0,
+      unpaidLeaveDays: 0,
+      paidLeaveDays: 0,
+      lateArrivals: 0,
+    },
+    latePenalty: { enabled: false, latesPerHalfDay: 3 },
+    joinDate: '2026-01-01',
+    exitDate: null,
+    periodStart: '2026-10-01',
+    periodEnd: '2026-10-31',
+  });
+  assert.equal(slip.breakdown.proration.applied, false);
+  assert.equal(slip.breakdown.inputs.perDayRate, 7142.86);
+  assert.equal(slip.gross, 150000);
+  assert.equal(slip.breakdown.deductions.halfDay, 3571.43);
+  assert.equal(slip.deductions, 3571.43);
+  assert.equal(slip.tax, 10000);
+  assert.equal(slip.net, 136428.57);
+});
+
+// Holiday on 1 Oct and 23 Oct would be 20 working days. This case is one holiday
+// (21 days) and a joiner on 15 Oct, so 11 employed days: 15, 16, 19-22, 26-30.
+test('a mid-month joiner is prorated after a holiday is removed from the month', () => {
+  const slip = buildPayslipFigures({
+    basic: 100000,
+    hra: 40000,
+    medical: 10000,
+    other: 0,
+    monthWorkingDays: 21,
+    employedWorkingDays: 11,
+    attendance: {
+      presentDays: 11,
+      lateDays: 0,
+      halfDays: 0,
+      absentDays: 0,
+      unpaidLeaveDays: 0,
+      paidLeaveDays: 0,
+      lateArrivals: 0,
+    },
+    latePenalty: { enabled: false, latesPerHalfDay: 3 },
+    joinDate: '2026-10-15',
+    exitDate: null,
+    periodStart: '2026-10-01',
+    periodEnd: '2026-10-31',
+  });
+  assert.equal(slip.breakdown.proration.applied, true);
+  assert.equal(slip.breakdown.inputs.perDayRate, 7142.86);
+  assert.equal(slip.gross, 78571.46);
+  assert.equal(slip.deductions, 0);
+  assert.equal(slip.breakdown.tax.annualTax, 120000);
+  assert.equal(slip.tax, 5238.1);
+  assert.equal(slip.net, 73333.36);
+});
+
+test('a joiner with a holiday and one half day keeps the same per-day rate', () => {
+  const slip = buildPayslipFigures({
+    basic: 100000,
+    hra: 40000,
+    medical: 10000,
+    other: 0,
+    monthWorkingDays: 21,
+    employedWorkingDays: 11,
+    attendance: {
+      presentDays: 10,
+      lateDays: 0,
+      halfDays: 1,
+      absentDays: 0,
+      unpaidLeaveDays: 0,
+      paidLeaveDays: 0,
+      lateArrivals: 0,
+    },
+    latePenalty: { enabled: true, latesPerHalfDay: 3 },
+    joinDate: '2026-10-15',
+    exitDate: null,
+    periodStart: '2026-10-01',
+    periodEnd: '2026-10-31',
+  });
+  assert.equal(slip.gross, 78571.46);
+  assert.equal(slip.breakdown.deductions.halfDay, 3571.43);
+  assert.equal(slip.breakdown.deductions.latePenalty, 0);
+  assert.equal(slip.tax, 5238.1);
+  assert.equal(slip.net, 69761.93);
+  const parts = slip.breakdown.earnings;
+  assert.equal(roundMoney(parts.basic + parts.hra + parts.medical + parts.otherAllowances), parts.gross);
+});

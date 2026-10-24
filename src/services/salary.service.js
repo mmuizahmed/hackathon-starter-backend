@@ -72,9 +72,12 @@ export async function setSalaryStructure(user, employeeId, input) {
   const before = snapshot(current);
 
   if (current) {
+    // Always the day before the new row, even when that is before this row's
+    // start. Clamping it forward left both rows covering a month-end, so a
+    // same-day correction could still pay the old basic.
     const dayBefore = addDays(input.effectiveFrom, -1);
     current.active = false;
-    current.effectiveTo = dayBefore < current.effectiveFrom ? current.effectiveFrom : dayBefore;
+    current.effectiveTo = dayBefore;
     await current.save();
   }
 
