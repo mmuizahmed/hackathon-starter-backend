@@ -13,7 +13,7 @@ const router = Router();
 
 router.param('id', rejectBadObjectId);
 
-router.get('/', requireAuth, requireRole('admin', 'hr'), validateQuery(listQuerySchema), getLeaveTypes);
+router.get('/', requireAuth, validateQuery(listQuerySchema), getLeaveTypes);
 router.post('/', requireAuth, requireRole('admin'), validateBody(leaveTypeSchema), postLeaveType);
 router.patch('/:id', requireAuth, requireRole('admin'), validateBody(leaveTypeUpdateSchema), patchLeaveType);
 router.delete('/:id', requireAuth, requireRole('admin'), removeLeaveType);

@@ -509,7 +509,9 @@ export async function myDashboard(user, today = karachiDateString()) {
     expectedHours: 40,
     lateCount: month.lateArrivals,
     leaveBalances: balances.items.map((row) => ({
+      leaveTypeId: row.leaveTypeId,
       code: row.code,
+      name: row.name,
       quota: row.quota,
       used: row.used,
       remaining: row.remaining,

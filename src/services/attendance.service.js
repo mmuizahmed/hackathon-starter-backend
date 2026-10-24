@@ -8,7 +8,7 @@ import { assertObjectId } from '../utils/objectId.js';
 import { pageData, readPage } from '../utils/page.js';
 import { addDays, karachiDateString, karachiWallTimeToUtc } from '../utils/timezone.js';
 import { recordAudit } from './audit.service.js';
-import { listWorkingDays } from './calendar.service.js';
+import { isWorkingDay, listWorkingDays } from './calendar.service.js';
 import { getSettings } from './settings.service.js';
 import { assertOwnEmployee, employeeScopeFilter } from './scope.service.js';
 
@@ -26,19 +26,27 @@ function arrivalIsLate(checkIn, dateStr, settings) {
   return checkIn.getTime() > limit;
 }
 
-function decideStatus(checkIn, checkOut, dateStr, settings) {
-  const late = checkIn ? arrivalIsLate(checkIn, dateStr, settings) : false;
-  let status = late ? 'late' : 'present';
+function decideStatus(checkInTime, checkOut, dateStr, settings, workingDay) {
   let workedMinutes = null;
-  if (checkIn && checkOut) {
-    workedMinutes = Math.round((checkOut.getTime() - checkIn.getTime()) / 60000);
+  if (checkInTime && checkOut) {
+    workedMinutes = Math.round((checkOut.getTime() - checkInTime.getTime()) / 60000);
     if (workedMinutes < 0) {
       throw new AppError('Check-out is before check-in', 400);
     }
-    // Half day wins over present/late. The late flag is kept separately.
-    if (workedMinutes < settings.halfDayHours * 60) status = 'half_day';
   }
+  // A weekend or holiday is not a shift. Keep the punches, but do not mark late or half day.
+  // Payroll only walks working days, so this row is not a deduction either.
+  if (!workingDay) return { late: false, status: 'present', workedMinutes };
+  const late = checkInTime ? arrivalIsLate(checkInTime, dateStr, settings) : false;
+  let status = late ? 'late' : 'present';
+  // Half day wins over present/late. The late flag is kept separately.
+  if (workedMinutes != null && workedMinutes < settings.halfDayHours * 60) status = 'half_day';
   return { late, status, workedMinutes };
+}
+
+async function statusForPunch(checkInTime, checkOut, dateStr, settings) {
+  const workingDay = await isWorkingDay(dateStr);
+  return decideStatus(checkInTime, checkOut, dateStr, settings, workingDay);
 }
 
 // Past days with no check-out are missing_checkout on read. We do not rewrite the stored row.
@@ -154,7 +162,7 @@ export async function checkIn(actor, input, now = new Date()) {
     faceCount = camera.faceCount;
   }
 
-  const decision = decideStatus(now, null, date, settings);
+  const decision = await statusForPunch(now, null, date, settings);
   try {
     const row = await Attendance.create({
       employee: employeeId,
@@ -202,7 +210,7 @@ export async function checkOut(actor, input, now = new Date()) {
   if (row.checkOut) throw new AppError('Already checked out today', 409);
 
   const before = { status: row.status, checkOut: row.checkOut };
-  const decision = decideStatus(row.checkIn, now, row.date, settings);
+  const decision = await statusForPunch(row.checkIn, now, row.date, settings);
   row.checkOut = now;
   row.status = decision.status;
   row.late = decision.late;
@@ -498,7 +506,7 @@ async function applyCorrection(correction, settings) {
   const checkOut = correction.requestedCheckOut;
   let row = await Attendance.findOne({ employee: correction.employee, date: correction.date });
   if (!row) {
-    const decision = decideStatus(checkIn, checkOut, correction.date, settings);
+    const decision = await statusForPunch(checkIn, checkOut, correction.date, settings);
     row = await Attendance.create({
       employee: correction.employee,
       date: correction.date,
@@ -511,7 +519,7 @@ async function applyCorrection(correction, settings) {
     });
     return row;
   }
-  const decision = decideStatus(checkIn || row.checkIn, checkOut || row.checkOut, correction.date, settings);
+  const decision = await statusForPunch(checkIn || row.checkIn, checkOut || row.checkOut, correction.date, settings);
   if (checkIn) row.checkIn = checkIn;
   if (checkOut) row.checkOut = checkOut;
   row.status = decision.status;

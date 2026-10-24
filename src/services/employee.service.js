@@ -122,6 +122,7 @@ async function leaveBalances(employeeId) {
     const used = usedByType.get(String(type._id)) || 0;
     const quota = type.yearlyQuota ?? null;
     return {
+      leaveTypeId: type._id.toString(),
       code: type.code,
       name: type.name,
       paid: type.paid,

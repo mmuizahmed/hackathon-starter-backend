@@ -120,7 +120,7 @@ It loads the company weekend and the holidays in that range. A tentative holiday
 
 `checkIn` and `checkOut` in `src/services/attendance.service.js` use `new Date()` unless a test passes a clock. The route does not read a time from the body.
 
-One employee, one Karachi day. The second check-in is `409` `Already checked in today`. Late means the timestamp is **after** office start plus grace, so 09:15 is present and 09:16 is late when the office starts at 09:00 and grace is 15 minutes. A checkout shorter than `halfDayHours` becomes `half_day`. The `late` flag stays true if the arrival was late.
+One employee, one Karachi day. The second check-in is `409` `Already checked in today`. Late means the timestamp is **after** office start plus grace, so 09:15 is present and 09:16 is late when the office starts at 09:00 and grace is 15 minutes. A checkout shorter than `halfDayHours` becomes `half_day`. The `late` flag stays true if the arrival was late. Those two rules apply on working days only. A weekend or holiday check-in is stored as `present` with `late: false`, so it is not a half-day deduction.
 
 `missing_checkout` and `absent` are decided when a list, board, or calendar is read. Past open rows show `missing_checkout`. A working day on or before today with no row and no approved leave shows `absent`. An approved leave request covering that date shows `on_leave`. Saving settings later does not walk back through old rows and change `late`.
 
