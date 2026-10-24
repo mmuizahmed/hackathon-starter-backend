@@ -32,6 +32,14 @@ export const updateEmployeeSchema = z.object({
   basicSalary: z.number().min(1).optional(),
 }).refine((value) => Object.keys(value).length > 0, { message: 'Send at least one field' });
 
+export const importQuerySchema = z.object({
+  dryRun: z.preprocess(blankToUndefined, z.enum(['true', 'false']).optional()),
+});
+
+export const importBodySchema = z.object({
+  csv: z.string().max(1_000_000).optional(),
+});
+
 export const employeeQuerySchema = z.object({
   ...pageQuery,
   search: z.preprocess(blankToUndefined, z.string().trim().max(80).optional()),

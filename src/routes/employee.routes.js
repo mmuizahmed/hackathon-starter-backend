@@ -10,8 +10,14 @@ import {
   postImport,
 } from '../controllers/employee.controller.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
-import { validateBody, validateQuery } from '../middleware/validate.js';
-import { createEmployeeSchema, employeeQuerySchema, updateEmployeeSchema } from '../validators/employees.js';
+import { rejectBadObjectId, validateBody, validateQuery } from '../middleware/validate.js';
+import {
+  createEmployeeSchema,
+  employeeQuerySchema,
+  importBodySchema,
+  importQuerySchema,
+  updateEmployeeSchema,
+} from '../validators/employees.js';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -35,8 +41,18 @@ function readUpload(req, res, next) {
 
 const router = Router();
 
+router.param('id', rejectBadObjectId);
+
 router.get('/export', requireAuth, requireRole('hr'), validateQuery(employeeQuerySchema), getExport);
-router.post('/import', requireAuth, requireRole('hr'), readUpload, postImport);
+router.post(
+  '/import',
+  requireAuth,
+  requireRole('hr'),
+  readUpload,
+  validateQuery(importQuerySchema),
+  validateBody(importBodySchema),
+  postImport,
+);
 router.get('/', requireAuth, requireRole('admin', 'hr', 'employee'), validateQuery(employeeQuerySchema), getEmployees);
 router.post('/', requireAuth, requireRole('hr'), validateBody(createEmployeeSchema), postEmployee);
 router.get('/:id', requireAuth, requireRole('admin', 'hr', 'employee'), getOneEmployee);

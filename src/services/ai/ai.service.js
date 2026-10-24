@@ -216,6 +216,10 @@ export async function smartLeave(user, input) {
     };
   } catch (error) {
     if (error.statusCode) throw error;
+    // A down provider is not a bad sentence. guardedAi turns these into the friendly fallback.
+    if (error.code === 'AI_NOT_CONFIGURED' || error.code === 'AI_PROVIDER' || error.code === 'AI_TIMEOUT') {
+      throw error;
+    }
     return emptyLeave('The assistant could not fill the leave form.');
   }
 }

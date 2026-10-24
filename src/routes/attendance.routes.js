@@ -10,7 +10,7 @@ import {
   postReview,
 } from '../controllers/attendance.controller.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
-import { validateBody, validateQuery } from '../middleware/validate.js';
+import { rejectBadObjectId, validateBody, validateQuery } from '../middleware/validate.js';
 import {
   attendanceQuerySchema,
   boardQuerySchema,
@@ -23,6 +23,8 @@ import {
 } from '../validators/attendance.js';
 
 const router = Router();
+
+router.param('id', rejectBadObjectId);
 
 router.post('/check-in', requireAuth, requireRole('hr', 'employee'), validateBody(checkInSchema), postCheckIn);
 router.post('/check-out', requireAuth, requireRole('hr', 'employee'), validateBody(checkOutSchema), postCheckOut);

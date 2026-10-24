@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import { checks, createRun, finalize, getRun, listRuns } from '../controllers/payroll.controller.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
-import { validateBody, validateQuery } from '../middleware/validate.js';
+import { rejectBadObjectId, validateBody, validateQuery } from '../middleware/validate.js';
 import { finalizePayrollSchema, payrollListQuerySchema, payrollMonthSchema } from '../validators/payroll.js';
 
 const router = Router();
+
+router.param('id', rejectBadObjectId);
 
 router.post('/runs', requireAuth, requireRole('hr'), validateBody(payrollMonthSchema), createRun);
 router.get('/runs', requireAuth, requireRole('admin', 'hr'), validateQuery(payrollListQuerySchema), listRuns);

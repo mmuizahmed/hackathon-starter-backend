@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import { getUsers, patchUser, postUser } from '../controllers/userAdmin.controller.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
-import { validateBody, validateQuery } from '../middleware/validate.js';
+import { rejectBadObjectId, validateBody, validateQuery } from '../middleware/validate.js';
 import { createHrSchema, updateUserSchema, userQuerySchema } from '../validators/users.js';
 
 const router = Router();
+
+router.param('id', rejectBadObjectId);
 
 router.get('/', requireAuth, requireRole('admin'), validateQuery(userQuerySchema), getUsers);
 router.post('/', requireAuth, requireRole('admin'), validateBody(createHrSchema), postUser);

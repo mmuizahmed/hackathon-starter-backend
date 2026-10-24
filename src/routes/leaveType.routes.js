@@ -6,10 +6,12 @@ import {
   removeLeaveType,
 } from '../controllers/org.controller.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
-import { validateBody, validateQuery } from '../middleware/validate.js';
+import { rejectBadObjectId, validateBody, validateQuery } from '../middleware/validate.js';
 import { leaveTypeSchema, leaveTypeUpdateSchema, listQuerySchema } from '../validators/org.js';
 
 const router = Router();
+
+router.param('id', rejectBadObjectId);
 
 router.get('/', requireAuth, requireRole('admin', 'hr'), validateQuery(listQuerySchema), getLeaveTypes);
 router.post('/', requireAuth, requireRole('admin'), validateBody(leaveTypeSchema), postLeaveType);
