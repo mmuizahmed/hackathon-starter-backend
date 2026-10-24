@@ -23,3 +23,14 @@ export function assertOwnEmployee(user, employeeId) {
     throw new AppError('You can only access your own records', 403);
   }
 }
+
+// Routes call requireRole as well. Services repeat the check because the AI
+// assistant will call these functions directly and will not pass through Express.
+export function assertRole(user, ...roles) {
+  if (!user) {
+    throw new AppError('Authentication required', 401);
+  }
+  if (!roles.includes(user.role)) {
+    throw new AppError('You do not have access to this resource', 403);
+  }
+}

@@ -13,6 +13,23 @@ export async function stop(server) {
   await closed;
 }
 
+export async function requestRaw(base, path, { method = 'GET', body, cookie } = {}) {
+  const response = await fetch(`${base}${path}`, {
+    method,
+    headers: {
+      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      ...(cookie ? { cookie } : {}),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const buffer = Buffer.from(await response.arrayBuffer());
+  return {
+    status: response.status,
+    buffer,
+    contentType: response.headers.get('content-type') || '',
+  };
+}
+
 export async function request(base, path, { method = 'GET', body, cookie } = {}) {
   const response = await fetch(`${base}${path}`, {
     method,
