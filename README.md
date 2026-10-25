@@ -2,7 +2,9 @@
 
 HCM Lite is a small human-resources system for one company: Admin sets the rules, HR runs people and payroll, and employees check in, request leave, and read their own payslips. The browser app and the API are separate. The browser only talks to `/api` on its own origin, and the login stays in an httpOnly cookie named `token`. A new database has no employees and no admin until someone finishes the setup screen.
 
-Live app: https://hackathon-starter-frontend-eight.vercel.app
+Live app: https://hcm.muiz.pk (also at https://hackathon-starter-frontend-eight.vercel.app)
+
+Android APK: [HCM-Lite.apk](https://github.com/mmuizahmed/hackathon-starter-frontend/releases/download/apk-latest/HCM-Lite.apk). It is a Capacitor app that opens the live site. Build details are in the frontend README.
 
 API health: https://hackathon-starter-backend-astm.onrender.com/api/health
 
