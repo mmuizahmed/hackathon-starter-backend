@@ -90,7 +90,7 @@ HR will create employee logins with `mustChangePassword: true`. The admin create
 
 A second call returns `409` and `Setup has already been completed`. If a later step fails, the new settings row and leave types are deleted so a retry can run. These leave types are company rules, not sample people. They are not inserted at server start.
 
-Optional env path: if `ADMIN_EMAIL` and `ADMIN_PASSWORD` are both set, `server.js` calls the same `completeSetup` after MongoDB connects. `COMPANY_NAME` defaults to `HCM Lite`. Leave those variables empty on Render so judges can use the screen on an empty database.
+Optional env path: if `ADMIN_EMAIL` and `ADMIN_PASSWORD` are both set, `server.js` calls the same `completeSetup` after MongoDB connects. `COMPANY_NAME` defaults to `HCM Lite`. Leave those variables empty in production so the first Admin is created on the setup screen.
 
 ## Audit log
 
@@ -100,7 +100,7 @@ Login and logout are not audited. Setup, settings, org rows, users, employees, c
 
 `GET /api/audit` is admin only. Filters: `action`, `entity`, `entityId`, `actor`, `from`, `to`, plus `page` and `limit`.
 
-The model throws if something calls update or delete. There is no such route. That matches the brief: nobody edits the audit log, including admin.
+The model throws if something calls update or delete. There is no such route. Nobody can edit the audit log, including Admin.
 
 ## Dates
 

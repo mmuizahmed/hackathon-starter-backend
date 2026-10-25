@@ -32,7 +32,7 @@ const employeeSchema = new mongoose.Schema(
       enum: ['male', 'female', 'other', 'undisclosed'],
       default: 'undisclosed',
     },
-    // The brief rejects a salary that is not greater than zero.
+    // A salary must be greater than zero.
     salary: {
       basic: { type: Number, required: true, min: 1 },
     },

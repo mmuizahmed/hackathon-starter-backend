@@ -36,7 +36,7 @@ function parseEnv() {
     throw new Error('JWT_SECRET must be at least 16 characters.');
   }
 
-  // Both or neither. Leave them empty so judges use the setup screen on an empty database.
+  // Both or neither. Leave them empty to create the first Admin on the setup screen.
   const adminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
   const adminPassword = (process.env.ADMIN_PASSWORD || '').trim();
   const companyName = (process.env.COMPANY_NAME || '').trim();

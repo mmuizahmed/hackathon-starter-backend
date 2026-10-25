@@ -41,7 +41,7 @@ const settingsSchema = new mongoose.Schema(
       },
     },
     radiusMeters: { type: Number, default: 150, min: 1 },
-    // Bonus rule. Off until an admin turns it on, so core payroll stays as the brief.
+    // Optional rule. Off until an admin turns it on.
     latePenalty: {
       enabled: { type: Boolean, default: false },
       latesPerHalfDay: { type: Number, default: 3, min: 1 },

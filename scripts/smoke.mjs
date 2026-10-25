@@ -1,6 +1,6 @@
 // Demo flow against a running API. No npm dependencies: Node 22 fetch plus a cookie jar per role.
 // Usage: BASE_URL=http://127.0.0.1:5000 node scripts/smoke.mjs
-// This creates the company. Wipe the database afterwards if judges still need the setup screen.
+// This creates the company. Wipe the database afterwards to get the setup screen back.
 
 const BASE_URL = (process.env.BASE_URL || 'http://127.0.0.1:5000').replace(/\/$/, '');
 const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
