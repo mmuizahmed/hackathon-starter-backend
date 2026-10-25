@@ -4,11 +4,11 @@ HCM Lite is a small human-resources system for one company: Admin sets the rules
 
 Live app: https://hcm.muiz.pk (also at https://hackathon-starter-frontend-eight.vercel.app)
 
-Android APK: [HCM-Lite.apk](https://github.com/mmuizahmed/hackathon-starter-frontend/releases/download/apk-latest/HCM-Lite.apk). It is a Capacitor app that opens the live site. Build details are in the frontend README.
+Android APK: [HCM-Lite.apk](https://github.com/mmuizahmed/hcm-lite-frontend/releases/download/apk-latest/HCM-Lite.apk). It is a Capacitor app that opens the live site. Build details are in the frontend README.
 
 API health: https://hackathon-starter-backend-astm.onrender.com/api/health
 
-Frontend repo: https://github.com/mmuizahmed/hackathon-starter-frontend
+Frontend repo: https://github.com/mmuizahmed/hcm-lite-frontend
 
 This repository is the API. The route contract is [docs/API.md](docs/API.md). The data model is [docs/SCHEMA.md](docs/SCHEMA.md).
 
@@ -102,7 +102,7 @@ npm run dev
 
 Health check: `curl http://localhost:5000/api/health`
 
-**Frontend** ([hackathon-starter-frontend](https://github.com/mmuizahmed/hackathon-starter-frontend))
+**Frontend** ([hcm-lite-frontend](https://github.com/mmuizahmed/hcm-lite-frontend))
 
 ```bash
 npm install
