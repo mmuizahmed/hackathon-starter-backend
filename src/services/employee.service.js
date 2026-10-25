@@ -3,7 +3,6 @@ import { Designation } from '../models/Designation.js';
 import { Employee } from '../models/Employee.js';
 import { LeaveRequest } from '../models/LeaveRequest.js';
 import { LeaveType } from '../models/LeaveType.js';
-import { Payslip } from '../models/Payslip.js';
 import { User } from '../models/User.js';
 import { AppError } from '../utils/AppError.js';
 import { csvCell, parseCsv } from '../utils/csv.js';
@@ -13,6 +12,7 @@ import { hashPassword, makeTemporaryPassword } from '../utils/password.js';
 import { karachiDateString } from '../utils/timezone.js';
 import { recordAudit } from './audit.service.js';
 import { summarizeMonth } from './attendance.service.js';
+import { listPayslips } from './payslip.service.js';
 import { assertOwnEmployee, employeeScopeFilter } from './scope.service.js';
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -135,10 +135,11 @@ async function leaveBalances(employeeId) {
   });
 }
 
-async function lastPayslip(employeeId) {
-  const slip = await Payslip.findOne({ employee: employeeId }).sort({ month: -1, createdAt: -1 });
+async function lastPayslip(actor, employeeId) {
+  const page = await listPayslips(actor, { employeeId: String(employeeId), limit: 1 });
+  const slip = page.items[0];
   if (!slip) return null;
-  return { id: slip._id.toString(), month: slip.month, net: slip.net };
+  return { id: slip.id, month: slip.month, net: slip.net };
 }
 
 export async function getEmployee(actor, id) {
@@ -160,7 +161,7 @@ export async function getEmployee(actor, id) {
     balances = null;
   }
   try {
-    payslip = await lastPayslip(row._id);
+    payslip = await lastPayslip(actor, row._id);
   } catch {
     payslip = null;
   }

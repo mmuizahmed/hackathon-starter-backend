@@ -1,6 +1,7 @@
 import { Department } from '../models/Department.js';
 import { Designation } from '../models/Designation.js';
 import { Employee } from '../models/Employee.js';
+import { PayrollRun } from '../models/PayrollRun.js';
 import { Payslip } from '../models/Payslip.js';
 import { Settings } from '../models/Settings.js';
 import { AppError } from '../utils/AppError.js';
@@ -28,18 +29,30 @@ function toPayslip(row) {
   };
 }
 
+// Employees only see a payslip after Admin finalizes that run.
+// Admin and HR still see drafts, because HR reviews them.
+async function finalizedRunFilter(user) {
+  if (user.role !== 'employee') return {};
+  const runs = await PayrollRun.find({ status: 'finalized' }).select('_id').lean();
+  return { payrollRun: { $in: runs.map((run) => run._id) } };
+}
+
 async function findOwnPayslip(user, id) {
   if (!isObjectId(id)) throw new AppError('Payslip not found', 404);
   const row = await Payslip.findById(id).populate('employee', 'name code');
   if (!row) throw new AppError('Payslip not found', 404);
   assertOwnEmployee(user, row.employee?._id || row.employee);
+  if (user.role === 'employee') {
+    const run = await PayrollRun.findById(row.payrollRun).select('status').lean();
+    if (!run || run.status !== 'finalized') throw new AppError('Payslip not found', 404);
+  }
   return row;
 }
 
 export async function listPayslips(user, query) {
   if (query.employeeId) assertOwnEmployee(user, query.employeeId);
   const { page, limit, skip } = readPage(query);
-  const filter = { ...employeeScopeFilter(user) };
+  const filter = { ...employeeScopeFilter(user), ...(await finalizedRunFilter(user)) };
   if (query.employeeId) filter.employee = query.employeeId;
   if (query.month) filter.month = query.month;
   const [rows, total] = await Promise.all([

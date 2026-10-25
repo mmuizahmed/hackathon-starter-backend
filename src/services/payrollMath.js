@@ -60,6 +60,14 @@ function allowanceNote(kind, basic, amount) {
   return 'Stored allowance';
 }
 
+// Pull `amount` from state.remaining. Nothing is taken once remaining is used up.
+function takeFrom(state, amount) {
+  if (!(state.remaining > 0) || !(amount > 0)) return 0;
+  const taken = roundMoney(Math.min(amount, state.remaining));
+  state.remaining = roundMoney(state.remaining - taken);
+  return taken;
+}
+
 function chargedEarnings(monthly, chargedGross, fullMonth, employed, monthDays) {
   if (fullMonth) {
     return {
@@ -82,6 +90,8 @@ function chargedEarnings(monthly, chargedGross, fullMonth, employed, monthDays) 
 // attendance counts come from summarizeEmployeeAttendance.
 // Tax uses the full monthly structure × 12, then scales by employed/working days.
 // Absence does not change the tax slab. It is a separate deduction.
+// Net pay is never below 0. Deductions stop at charged gross (per-day rounding
+// can otherwise overshoot). Tax is withheld only from what remains.
 export function buildPayslipFigures({
   basic,
   hra,
@@ -118,20 +128,25 @@ export function buildPayslipFigures({
   const latePenaltyEnabled = Boolean(latePenalty?.enabled);
   const latePenaltyHalfDays = latePenaltyEnabled ? Math.floor(lateArrivals / latesPerHalfDay) : 0;
 
-  const absentAmount = roundMoney(absentDays * perDay);
-  const unpaidAmount = roundMoney(unpaidLeaveDays * perDay);
-  const halfAmount = roundMoney(halfDays * 0.5 * perDay);
-  const lateAmount = roundMoney(latePenaltyHalfDays * 0.5 * perDay);
+  const payable = { remaining: chargedGross };
+  const absentAmount = takeFrom(payable, roundMoney(absentDays * perDay));
+  const unpaidAmount = takeFrom(payable, roundMoney(unpaidLeaveDays * perDay));
+  const halfAmount = takeFrom(payable, roundMoney(halfDays * 0.5 * perDay));
+  const lateAmount = takeFrom(payable, roundMoney(latePenaltyHalfDays * 0.5 * perDay));
   const deductionTotal = roundMoney(absentAmount + unpaidAmount + halfAmount + lateAmount);
 
   const taxInfo = calculateAnnualTax(monthly.gross * 12);
   const fullMonthlyTax = roundMoney(taxInfo.annualTax / 12);
-  const chargedTax = fullMonth ? fullMonthlyTax : roundMoney(fullMonthlyTax * (W === 0 ? 0 : E / W));
-  const net = roundMoney(chargedGross - deductionTotal - chargedTax);
+  const rawTax = fullMonth ? fullMonthlyTax : roundMoney(fullMonthlyTax * (W === 0 ? 0 : E / W));
+  const chargedTax = takeFrom(payable, rawTax);
+  const net = Math.max(0, roundMoney(chargedGross - deductionTotal - chargedTax));
 
   let formula = taxInfo.formula;
   if (!fullMonth) {
-    formula = `${taxInfo.formula} = ${plain(fullMonthlyTax)}; charged = ${plain(fullMonthlyTax)} * (${E} / ${W}) = ${plain(chargedTax)}`;
+    formula = `${taxInfo.formula} = ${plain(fullMonthlyTax)}; charged = ${plain(fullMonthlyTax)} * (${E} / ${W}) = ${plain(rawTax)}`;
+  }
+  if (chargedTax !== rawTax) {
+    formula = `${formula}; withheld ${plain(chargedTax)} so net pay is not below 0`;
   }
 
   const earnings = chargedEarnings(monthly, chargedGross, fullMonth, E, W);

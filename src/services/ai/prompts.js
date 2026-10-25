@@ -28,7 +28,7 @@ Payroll:
 - Pay is prorated by employed working days, then absent days, unpaid leave, and half days are deducted.
 - Tax uses the monthly gross times 12. Slabs: 0 up to 600,000; 5% of the amount above 600,000 up to 1,200,000; 30,000 + 15% above 1,200,000 up to 2,400,000; 210,000 + 25% above 2,400,000 up to 3,600,000; 510,000 + 35% above 3,600,000.
 - HR prepares a payroll run. Only admin can finalize it. After finalize it is locked.
-- Employees see their own payslips. They cannot see a colleague's salary.
+- Employees see their own payslips only after the run is finalized. They cannot see a draft, and they cannot see a colleague's salary.
 
 Who can do what:
 - Admin manages settings and finalizes payroll. HR manages employees, leave approval, and attendance corrections.

@@ -237,3 +237,81 @@ test('a joiner with a holiday and one half day keeps the same per-day rate', () 
   const parts = slip.breakdown.earnings;
   assert.equal(roundMoney(parts.basic + parts.hra + parts.medical + parts.otherAllowances), parts.gross);
 });
+
+function figures(overrides) {
+  return buildPayslipFigures({
+    basic: 100000,
+    hra: 40000,
+    medical: 10000,
+    other: 0,
+    monthWorkingDays: 22,
+    employedWorkingDays: 22,
+    attendance: {
+      presentDays: 0,
+      lateDays: 0,
+      halfDays: 0,
+      absentDays: 0,
+      unpaidLeaveDays: 0,
+      paidLeaveDays: 0,
+      lateArrivals: 0,
+    },
+    latePenalty: { enabled: false, latesPerHalfDay: 3 },
+    joinDate: '2026-01-01',
+    exitDate: null,
+    periodStart: '2026-10-01',
+    periodEnd: '2026-10-31',
+    ...overrides,
+  });
+}
+
+test('a fully absent month withholds no tax and nets zero', () => {
+  const slip = figures({
+    monthWorkingDays: 20,
+    employedWorkingDays: 20,
+    attendance: { absentDays: 20, unpaidLeaveDays: 0, halfDays: 0, lateArrivals: 0 },
+  });
+  assert.equal(slip.gross, 150000);
+  assert.equal(slip.breakdown.inputs.perDayRate, 7500);
+  assert.equal(slip.deductions, 150000);
+  assert.equal(slip.breakdown.deductions.absent, 150000);
+  assert.equal(slip.breakdown.tax.annualTax, 120000);
+  assert.equal(slip.tax, 0);
+  assert.equal(slip.breakdown.tax.monthlyTax, 0);
+  assert.equal(slip.net, 0);
+  assert.equal(slip.breakdown.net, 0);
+  assert.equal(roundMoney(slip.gross - slip.deductions - slip.tax), 0);
+  assert.match(slip.breakdown.tax.formula, /withheld 0 so net pay is not below 0/);
+});
+
+test('tax is withheld only up to the pay left after deductions', () => {
+  const slip = figures({
+    monthWorkingDays: 20,
+    employedWorkingDays: 20,
+    attendance: { absentDays: 19, unpaidLeaveDays: 0, halfDays: 0, lateArrivals: 0 },
+  });
+  assert.equal(slip.gross, 150000);
+  assert.equal(slip.deductions, 142500);
+  assert.equal(slip.tax, 7500);
+  assert.equal(slip.net, 0);
+  assert.equal(roundMoney(slip.gross - slip.deductions - slip.tax), slip.net);
+  assert.match(slip.breakdown.tax.formula, /withheld 7500 so net pay is not below 0/);
+});
+
+test('per-day rounding cannot deduct more than charged gross', () => {
+  const slip = figures({
+    monthWorkingDays: 22,
+    employedWorkingDays: 22,
+    attendance: { absentDays: 22, unpaidLeaveDays: 1, halfDays: 1, lateArrivals: 3 },
+    latePenalty: { enabled: true, latesPerHalfDay: 3 },
+  });
+  assert.equal(slip.breakdown.inputs.perDayRate, 6818.18);
+  assert.equal(slip.gross, 150000);
+  assert.equal(slip.breakdown.deductions.absent, 149999.96);
+  assert.equal(slip.breakdown.deductions.unpaidLeave, 0.04);
+  assert.equal(slip.breakdown.deductions.halfDay, 0);
+  assert.equal(slip.breakdown.deductions.latePenalty, 0);
+  assert.equal(slip.deductions, 150000);
+  assert.equal(slip.tax, 0);
+  assert.equal(slip.net, 0);
+  assert.equal(roundMoney(slip.gross - slip.deductions - slip.tax), slip.net);
+});

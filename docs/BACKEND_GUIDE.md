@@ -184,6 +184,8 @@ Tax uses the monthly structure, not the pay after absence. Annual gross is 150,0
 
 Net pay is 150,000 − 6,818.18 − 10,000 = 133,181.82.
 
+Net pay is never below 0. Deductions are applied first and stop when they reach the charged gross. That also covers per-day rounding, which can make a fully absent month a few paisa over the gross. Tax is still the slab on monthly gross × 12 (scaled by employed days for a joiner), but only the pay left after deductions is withheld. If nothing is left, withheld tax is 0 and net is 0. The gross on the payslip stays the charged gross.
+
 If the late-penalty setting is on and the rule is 3 lates = half a day, three late arrivals add another 0.5 × 6,818.18. A stored `half_day` adds the same half-day amount on its own. A late half day can count for both, because one rule is about hours worked and the other is about how often she arrived late.
 
 ### A joiner
@@ -193,5 +195,7 @@ Ali joins on 15 October 2026. October still has 22 working days, but he is emplo
 ### Finalize
 
 HR can build the draft while data is still messy. `GET /api/payroll/runs/:id/checks` lists four problems: no salary structure covering the month end, a missing check-out, pending leave that overlaps the month, and a pending attendance correction in the month. Admin finalize returns `422` until those lists are empty. Admin can send `override: true` and a reason. That reason is the audit `after.reason`. HR cannot finalize (`403`). After `finalized`, regenerate returns `409`. Each payslip then notifies that employee's login.
+
+Until the run is finalized, an employee cannot list, open, or download its payslips. Those slips are also omitted from the employee dashboard and from assistant tools that read payslips (`listPayslips` and `getPayslip`). Admin and HR still see the draft.
 
 `summarizeEmployeeAttendance(employeeId, from, to)` is the attendance count used above, and the one analytics and the AI attendance tools use. It follows the attendance board: a stored row wins, approved leave covers a day with no row, and a day after today is not an absence yet.

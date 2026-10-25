@@ -217,6 +217,28 @@ test('salary history, payroll draft, checks, finalize, and payslip scope', { tim
     const evaAgain = again.json.data.payslips.find((row) => row.employeeCode === 'E-001');
     assert.equal(evaAgain.breakdown.inputs.grossMonthly, 150000);
 
+    const hiddenList = await request(base, '/api/payslips', { cookie: evaCookie });
+    assert.equal(hiddenList.status, 200);
+    assert.equal(hiddenList.json.data.total, 0);
+    const hiddenOne = await request(base, `/api/payslips/${evaAgain.id}`, { cookie: evaCookie });
+    assert.equal(hiddenOne.status, 404);
+    const hiddenPdf = await requestRaw(base, `/api/payslips/${evaAgain.id}/pdf`, { cookie: evaCookie });
+    assert.equal(hiddenPdf.status, 404);
+    const hrList = await request(base, '/api/payslips', { cookie: hrCookie });
+    assert.equal(hrList.status, 200);
+    assert.equal(hrList.json.data.total, 2);
+    const adminOne = await request(base, `/api/payslips/${evaAgain.id}`, { cookie: adminCookie });
+    assert.equal(adminOne.status, 200);
+    assert.equal(adminOne.json.data.id, evaAgain.id);
+    const hiddenDash = await request(base, '/api/analytics/me', { cookie: evaCookie });
+    assert.equal(hiddenDash.status, 200);
+    assert.equal(hiddenDash.json.data.lastPayslip, null);
+    const hiddenProfile = await request(base, `/api/employees/${eva.employee._id}`, { cookie: evaCookie });
+    assert.equal(hiddenProfile.json.data.lastPayslip, null);
+    const hrProfile = await request(base, `/api/employees/${eva.employee._id}`, { cookie: hrCookie });
+    assert.equal(hrProfile.json.data.lastPayslip.id, evaAgain.id);
+    assert.equal(hrProfile.json.data.lastPayslip.net, evaAgain.net);
+
     const checks = await request(base, `/api/payroll/runs/${again.json.data.id}/checks`, { cookie: hrCookie });
     assert.equal(checks.status, 200);
     assert.equal(checks.json.data.ok, false);
@@ -299,6 +321,14 @@ test('salary history, payroll draft, checks, finalize, and payslip scope', { tim
     const ownList = await request(base, '/api/payslips', { cookie: evaCookie });
     assert.equal(ownList.json.data.total, 1);
     assert.equal(ownList.json.data.items[0].employeeCode, 'E-001');
+    const ownSlip = await request(base, `/api/payslips/${finalEva.id}`, { cookie: evaCookie });
+    assert.equal(ownSlip.status, 200);
+    assert.equal(ownSlip.json.data.net, finalEva.net);
+    const dash = await request(base, '/api/analytics/me', { cookie: evaCookie });
+    assert.equal(dash.json.data.lastPayslip.id, finalEva.id);
+    assert.equal(dash.json.data.lastPayslip.net, finalEva.net);
+    const profile = await request(base, `/api/employees/${eva.employee._id}`, { cookie: evaCookie });
+    assert.equal(profile.json.data.lastPayslip.id, finalEva.id);
     assert.equal(noPay.employee.code, 'E-003');
     assert.equal(await Settings.countDocuments({ key: 'company' }), 1);
   } finally {

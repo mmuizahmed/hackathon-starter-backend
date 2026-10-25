@@ -237,6 +237,25 @@ test('analytics formulas, role scope, and AI tools', { timeout: 180000 }, async 
       net: 777777,
       breakdown,
     });
+    const draftRun = await PayrollRun.create({
+      month: '2026-12',
+      status: 'draft',
+      workingDays: 22,
+      totals: { employees: 1, gross: 222222, deductions: 0, tax: 0, net: 222222 },
+      createdBy: admin._id,
+    });
+    const draftSlip = await Payslip.create({
+      payrollRun: draftRun._id,
+      employee: eva.employee._id,
+      month: '2026-12',
+      department: department._id,
+      designation: designation._id,
+      gross: 222222,
+      deductions: 0,
+      tax: 0,
+      net: 222222,
+      breakdown,
+    });
 
     await assert.rejects(
       () => runTool(evaUser, 'get_my_leave_balance', { employeeId: omar.employee._id.toString() }),
@@ -251,7 +270,18 @@ test('analytics formulas, role scope, and AI tools', { timeout: 180000 }, async 
       to: '2026-11-30',
     });
     assert.equal(JSON.stringify(injectedPay).includes('777777'), false);
+    assert.equal(JSON.stringify(injectedPay).includes('222222'), false);
     assert.ok(injectedPay.payslips.some((row) => row.gross === 150000));
+    const draftWindow = await runTool(evaUser, 'get_payroll_summary', {
+      from: '2026-10-01',
+      to: '2026-12-31',
+    });
+    assert.equal(JSON.stringify(draftWindow).includes('222222'), false);
+    assert.equal(draftWindow.payslipCount, 1);
+    const hrUser = { id: admin._id.toString(), role: 'hr', employeeId: null, active: true };
+    const hrDraft = await getPayrollSummary(hrUser, { from: '2026-12-01', to: '2026-12-31' });
+    assert.equal(hrDraft.payrollCost, 222222);
+    assert.equal(hrDraft.payslipCount, 1);
     const searched = await runTool(evaUser, 'search_employees', { search: 'Omar' });
     assert.equal(searched.total, 0);
     assert.equal(JSON.stringify(searched).includes('salary'), false);
@@ -286,6 +316,21 @@ test('analytics formulas, role scope, and AI tools', { timeout: 180000 }, async 
       },
     );
     assert.equal(refusedCalls, 0);
+    let draftCalls = 0;
+    setAiCompleter(async () => {
+      draftCalls += 1;
+      return { choices: [{ message: { content: 'should not explain a draft' } }] };
+    });
+    await assert.rejects(
+      () => explainPayslip(evaUser, { payslipId: draftSlip._id.toString() }),
+      (error) => error.statusCode === 404 && /not found/i.test(error.message),
+    );
+    assert.equal(draftCalls, 0);
+    setAiCompleter(async () => ({
+      choices: [{ message: { content: 'hr can read the draft' } }],
+    }));
+    const hrExplained = await explainPayslip(hrUser, { payslipId: draftSlip._id.toString() });
+    assert.match(hrExplained.explanation, /draft/);
 
     const adminCookie = await login(base, 'ada@example.com', 'correct-horse');
     const hrCookie = await login(base, 'hr@example.com', 'hr-pass-123');
@@ -317,6 +362,9 @@ test('analytics formulas, role scope, and AI tools', { timeout: 180000 }, async 
     assert.equal(mine.json.data.expectedHours, 40);
     assert.equal(mine.json.data.leaveBalances.length, 4);
     assert.equal(mine.json.data.lateCount, 2);
+    assert.equal(mine.json.data.lastPayslip.month, '2026-10');
+    assert.equal(mine.json.data.lastPayslip.net, 139000);
+    assert.equal(mine.json.data.lastPayslip.id, evaSlip._id.toString());
 
     function toolCall(name, args) {
       return {
