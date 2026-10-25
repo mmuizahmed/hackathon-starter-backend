@@ -56,18 +56,10 @@ function parseEnv() {
   // The browser never receives the key. Empty is allowed so the API still boots.
   const aiApiKey = (process.env.AI_API_KEY || '').trim();
   const aiBaseUrl = (process.env.AI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/openai/').trim();
-  const aiModel = (process.env.AI_MODEL || 'gemini-2.5-flash').trim();
+  const aiModel = (process.env.AI_MODEL || 'gemini-3.5-flash').trim();
   const aiRateLimit = Number((process.env.AI_RATE_LIMIT || '20').trim());
   const aiTimeoutMs = Number((process.env.AI_TIMEOUT_MS || '15000').trim());
-  let parsedAiUrl;
-  try {
-    parsedAiUrl = new URL(aiBaseUrl);
-  } catch {
-    throw new Error('AI_BASE_URL must be a full URL.');
-  }
-  if (parsedAiUrl.protocol !== 'http:' && parsedAiUrl.protocol !== 'https:') {
-    throw new Error('AI_BASE_URL must start with http:// or https://.');
-  }
+  const normalizedAiBaseUrl = normalizeAiBaseUrl(aiBaseUrl);
   if (!Number.isInteger(aiRateLimit) || aiRateLimit < 1 || aiRateLimit > 1000) {
     throw new Error('AI_RATE_LIMIT must be a whole number from 1 to 1000.');
   }
@@ -88,11 +80,29 @@ function parseEnv() {
     adminPassword,
     companyName,
     aiApiKey,
-    aiBaseUrl: parsedAiUrl.href.endsWith('/') ? parsedAiUrl.href : `${parsedAiUrl.href}/`,
+    aiBaseUrl: normalizedAiBaseUrl,
     aiModel,
     aiRateLimit,
     aiTimeoutMs,
   };
+}
+
+// `new URL('chat/completions', base)` replaces the last segment when base has no
+// trailing slash, so .../v1 would become .../chat/completions and the provider 404s.
+export function normalizeAiBaseUrl(value) {
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error('AI_BASE_URL must be a full URL.');
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('AI_BASE_URL must start with http:// or https://.');
+  }
+  if (!parsed.pathname.endsWith('/')) {
+    parsed.pathname = `${parsed.pathname}/`;
+  }
+  return parsed.href;
 }
 
 let env;

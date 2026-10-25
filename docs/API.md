@@ -894,7 +894,7 @@ Late rate, absenteeism, and unpaid days come from `getAttendanceSummary`, which 
 
 ## M8 AI — implemented
 
-`AI_API_KEY` stays on the server. Empty is allowed at boot. `AI_BASE_URL` defaults to `https://generativelanguage.googleapis.com/v1beta/openai/`. `AI_MODEL` defaults to `gemini-2.5-flash`. The call is OpenAI-compatible `POST {base}chat/completions`. Timeout is `AI_TIMEOUT_MS` (default 15000). `AI_RATE_LIMIT` defaults to 20 requests per user per rolling hour. The 429 message is `Too many AI requests. Try again in an hour.` Every call is logged in `aiLogs` with `feature` `chat`, `summary`, `smart_leave`, `explain_payslip`, or `policy`.
+`AI_API_KEY` stays on the server. Empty is allowed at boot. `AI_BASE_URL` defaults to `https://generativelanguage.googleapis.com/v1beta/openai/`. `AI_MODEL` defaults to `gemini-3.5-flash`. The call is OpenAI-compatible `POST {base}chat/completions`. Timeout is `AI_TIMEOUT_MS` (default 15000). `AI_RATE_LIMIT` defaults to 20 requests per user per rolling hour. The 429 message is `Too many AI requests. Try again in an hour.` Every call is logged in `aiLogs` with `feature` `chat`, `summary`, `smart_leave`, `explain_payslip`, or `policy`.
 
 Answers include `"label": "AI-generated"` and `"aiGenerated": true`. A provider failure, timeout, or missing key returns HTTP 200 with `fallback: true` and a short sentence (`The assistant is not configured yet.`, `The assistant took too long. Please try again.`, or `I could not reach the assistant. Please try again in a moment.`). `403`, `404`, and `429` still use those status codes.
 

@@ -12,6 +12,10 @@ export async function assertAiRateLimit(user) {
   }
 }
 
+function loggedError(error) {
+  return error?.detail || error?.message || '';
+}
+
 export async function writeAiLog({ user, feature, message, tools, response, latencyMs, status, error }) {
   await AiLog.create({
     user: user.id,
@@ -44,7 +48,7 @@ export async function guardedAi({ user, feature, message, run }) {
       message,
       latencyMs: Date.now() - started,
       status: 'error',
-      error: error.message,
+      error: loggedError(error),
       response: '',
     });
     throw error;
@@ -71,7 +75,7 @@ export async function guardedAi({ user, feature, message, run }) {
         message,
         latencyMs,
         status: error.statusCode === 403 ? 'refused' : 'error',
-        error: error.message,
+        error: loggedError(error),
       });
       throw error;
     }
@@ -82,7 +86,7 @@ export async function guardedAi({ user, feature, message, run }) {
       message,
       latencyMs,
       status: error.code === 'AI_TIMEOUT' ? 'timeout' : 'error',
-      error: error.message,
+      error: loggedError(error),
       response: answer,
     });
     return {

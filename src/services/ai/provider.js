@@ -24,11 +24,34 @@ export async function completeChat({ messages, tools, signal }) {
     }),
   });
   if (!response.ok) {
-    const error = new Error(`AI provider returned ${response.status}`);
+    let body = '';
+    try {
+      body = await response.text();
+    } catch {
+      body = '';
+    }
+    // detail is written to aiLogs only. The client still gets the short fallback.
+    const error = new Error('AI provider returned an error');
     error.code = 'AI_PROVIDER';
+    error.detail = providerErrorDetail(response.status, body);
     throw error;
   }
   return response.json();
+}
+
+function providerErrorDetail(status, body) {
+  let text = String(body || '');
+  const key = env.aiApiKey;
+  if (key) {
+    text = text.split(key).join('[redacted]');
+    const encoded = encodeURIComponent(key);
+    if (encoded !== key) text = text.split(encoded).join('[redacted]');
+  }
+  text = text.replace(/Bearer\s+\S+/gi, 'Bearer [redacted]');
+  const snippet = text.slice(0, 200);
+  return snippet
+    ? `AI provider returned ${status}: ${snippet}`
+    : `AI provider returned ${status}`;
 }
 
 let completer = completeChat;
