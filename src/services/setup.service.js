@@ -107,7 +107,7 @@ export async function completeSetup(input) {
   }
 }
 
-// Optional path from the brief. Prefer the setup screen when judges start from an empty database.
+// Optional boot-time setup from env variables. The setup screen is the normal path.
 export async function bootstrapFromEnv() {
   if (!env.adminEmail) {
     return false;

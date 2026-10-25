@@ -1009,7 +1009,7 @@ Smart leave response. The client shows this in the form. Nothing is saved until 
 
 `POST /api/ai/explain-payslip` loads the slip with `getPayslip`, so an employee cannot explain a colleague's slip (`403`). The prompt tells the model to describe the stored breakdown and not recalculate it.
 
-Policy answers may only use the rules in the hackathon brief (office hours, leave quotas, payroll, who can approve) plus the live settings and leave types. If the question is outside those rules, the answer says it does not know. The same rules are in the chat system prompt. The assistant replies in English, Urdu, or Roman Urdu, matching the user.
+Policy answers may only use the company rules (office hours, leave quotas, payroll, who can approve) plus the live settings and leave types. If the question is outside those rules, the answer says it does not know. The same rules are in the chat system prompt. The assistant replies in English, Urdu, or Roman Urdu, matching the user.
 
 ## M9 Comms and audit
 

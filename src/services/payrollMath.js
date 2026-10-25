@@ -11,7 +11,7 @@ function plain(value) {
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
 }
 
-// Illustrative slabs from the brief. The bands meet, so 1,200,000 is 30,000
+// Illustrative income tax slabs. The bands meet, so 1,200,000 is 30,000
 // either way: 5% of the amount above 600,000, or 30,000 + 15% of zero.
 export function calculateAnnualTax(annualGross) {
   const gross = roundMoney(annualGross);

@@ -1,5 +1,5 @@
 // Written only when an admin finishes first-run setup.
-// These are the company rules from the brief, not sample employees.
+// Default company leave rules created at setup. Not sample data.
 export const DEFAULT_LEAVE_TYPES = [
   { name: 'Annual', code: 'ANNUAL', yearlyQuota: 14, paid: true },
   { name: 'Sick', code: 'SICK', yearlyQuota: 8, paid: true },
