@@ -123,6 +123,8 @@ Worked example. Basic 100,000. HRA 40,000. Medical 10,000. Gross 150,000. Octobe
 
 Tax uses the monthly structure times 12, not the pay after absence. Annual gross 1,800,000 is in the slab "30,000 plus 15% of the amount above 1,200,000". The amount above 1,200,000 is 600,000. 15% of that is 90,000. Annual tax is 120,000. Monthly tax is 10,000. Net is 150,000 − 6,818.18 − 10,000 = 133,181.82.
 
+Net pay is never below 0. Deductions are taken first and stop at the charged gross, so per-day rounding cannot deduct more than was earned. The slab itself does not change, but tax is withheld only from the pay left after deductions. A month with nothing left has net 0.
+
 Slabs (annual gross):
 
 | Annual gross | Tax |
@@ -137,7 +139,7 @@ A joiner or leaver is paid for employed working days only. Their tax is the full
 
 The late-penalty setting is off unless Admin turns it on. When it is on, every N late arrivals (default 3) deduct half a day. A stored `half_day` is a separate half-day deduction.
 
-Attendance counts for payroll, dashboards, and the assistant come from `summarizeEmployeeAttendance`. HR can prepare the draft. Only Admin can finalize it. After finalize, regenerate returns 409. Finalize is 422 while checks are open (missing salary, missing check-out, pending leave, pending correction) unless Admin sends `override: true` and a reason.
+Attendance counts for payroll, dashboards, and the assistant come from `summarizeEmployeeAttendance`. HR can prepare the draft. Only Admin can finalize it. Employees see a payslip only after that run is finalized: the payslip list, a single payslip, the PDF, the dashboard, and the assistant. Admin and HR still see the draft. After finalize, regenerate returns 409. Finalize is 422 while checks are open (missing salary, missing check-out, pending leave, pending correction) unless Admin sends `override: true` and a reason.
 
 ## Security
 

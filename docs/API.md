@@ -126,7 +126,7 @@ Auth, organization, employees, attendance, leave, payroll, payslips, announcemen
 | GET | `/api/payroll/runs/:id` | Admin, HR |
 | GET | `/api/payroll/runs/:id/checks` | Admin, HR |
 | POST | `/api/payroll/runs/:id/finalize` | Admin |
-| GET | `/api/payslips` | Admin and HR: all. Employee: own |
+| GET | `/api/payslips` | Admin and HR: all, including drafts. Employee: own finalized runs |
 | GET | `/api/payslips/:id` | Same scope |
 | GET | `/api/payslips/:id/pdf` | Same scope. `application/pdf` |
 | GET | `/api/announcements` | Any logged-in user |
@@ -186,12 +186,12 @@ Section 2 lets admin **read** employees, attendance, leave, and payroll. Section
 | Salary structure | View | Manage | No |
 | Payroll draft | View | Manage | No |
 | Finalize payroll | Yes | No | No |
-| Payslips | All | All | Own |
+| Payslips | All, including drafts | All, including drafts | Own finalized runs |
 | Analytics | Company | HR | Personal (`/api/analytics/me`) |
 | AI chat | All data | HR data | Own data |
 | AI summary | Yes | Yes | No |
 | Smart leave | No | Own | Own |
-| Explain payslip | Any slip | Any slip | Own slip |
+| Explain payslip | Any slip | Any slip | Own finalized slip |
 | Policy Q&A | Yes | Yes | Yes |
 | Absence anomalies, attrition risk | Yes | Yes | No |
 | Announcements | Post | Post | Read |
@@ -458,7 +458,7 @@ This creates the employee and a user with the same email, role `employee`, `must
 }
 ```
 
-`leaveBalances` reads leave types and approved leave requests for the Karachi year. `quota` and `remaining` are null when the quota is unlimited. `lastPayslip` is `{ id, month, net }` or null. If a leave or payslip read fails because that module is not ready, that field is null and the profile still loads. List items stay the flat employee shape.
+`leaveBalances` reads leave types and approved leave requests for the Karachi year. `quota` and `remaining` are null when the quota is unlimited. `lastPayslip` is `{ id, month, net }` or null. An employee only gets a payslip from a finalized run; Admin and HR still see a draft. If a leave or payslip read fails because that module is not ready, that field is null and the profile still loads. List items stay the flat employee shape.
 
 The list `search` matches name, code, or email on the server. Employees only receive their own row. The filter uses the employee document `_id`, because that collection has no field named `employee`.
 
@@ -700,9 +700,9 @@ One active salary structure per employee. Older rows stay with `active: false`.
 | GET | `/api/payroll/runs/:id` | Admin, HR. Includes payslips and their breakdowns |
 | GET | `/api/payroll/runs/:id/checks` | Admin, HR. Safe to call before finalize |
 | POST | `/api/payroll/runs/:id/finalize` | Admin. Body `{ "override": false }` or `{ "override": true, "reason": "…" }`. Locks the run. A second finalize or regenerate is 409 |
-| GET | `/api/payslips` | Admin and HR: all. Employee: own. `?month&employeeId&page&limit` |
-| GET | `/api/payslips/:id` | Same scope |
-| GET | `/api/payslips/:id/pdf` | Same scope. `application/pdf` |
+| GET | `/api/payslips` | Admin and HR: all, including drafts. Employee: own payslips from finalized runs. `?month&employeeId&page&limit` |
+| GET | `/api/payslips/:id` | Same scope. An employee draft is `404` |
+| GET | `/api/payslips/:id/pdf` | Same scope. `application/pdf`. An employee draft is `404` |
 
 Month math:
 
@@ -712,6 +712,7 @@ Month math:
 - Pay before tax = per day × (`E` − absent − unpaid leave − 0.5 × half days).
 - If `latePenalty.enabled`, also deduct `floor(lateCount / latesPerHalfDay) × 0.5 × per day`. This is off unless an admin enables it.
 - Tax uses the **monthly structure gross × 12**, not the prorated pay. Monthly tax = annual tax / 12, then × (`E` / `W`) for joiners and leavers.
+- Net pay is never below 0. Deductions stop at the charged gross. Tax withheld is the slab amount, or the pay left after deductions when that is smaller.
 
 Annual tax on `gross × 12`:
 
@@ -897,7 +898,7 @@ Any logged-in user who has an employee profile. `403` if they do not. Query filt
 }
 ```
 
-`lateCount` is `summarizeEmployeeAttendance` from the first of this month through today. `leaveBalances` come from `getLeaveBalances`. `lastPayslip` is `{ id, month, net }` from `listPayslips`, or null. `todayStatus` is one of `on_leave`, `missing_checkout`, `half_day`, `late`, `present`, `absent`, or null when today is not a working day.
+`lateCount` is `summarizeEmployeeAttendance` from the first of this month through today. `leaveBalances` come from `getLeaveBalances`. `lastPayslip` is `{ id, month, net }` from `listPayslips`, or null. For an employee that list is finalized runs only, so a draft is not shown here. `todayStatus` is one of `on_leave`, `missing_checkout`, `half_day`, `late`, `present`, `absent`, or null when today is not a working day.
 
 ### GET `/api/analytics/anomalies`
 
@@ -1007,7 +1008,7 @@ Smart leave response. The client shows this in the form. Nothing is saved until 
 
 `type` must be a live leave-type code. Dates must be real `YYYY-MM-DD` values with `end` on or after `start`. Invalid JSON is retried once. A second failure, or a code that is not a leave type, returns `fallback: true` and null fields.
 
-`POST /api/ai/explain-payslip` loads the slip with `getPayslip`, so an employee cannot explain a colleague's slip (`403`). The prompt tells the model to describe the stored breakdown and not recalculate it.
+`POST /api/ai/explain-payslip` loads the slip with `getPayslip`, so an employee cannot explain a colleague's slip (`403`) or a draft (`404`). The prompt tells the model to describe the stored breakdown and not recalculate it.
 
 Policy answers may only use the company rules (office hours, leave quotas, payroll, who can approve) plus the live settings and leave types. If the question is outside those rules, the answer says it does not know. The same rules are in the chat system prompt. The assistant replies in English, Urdu, or Roman Urdu, matching the user.
 
