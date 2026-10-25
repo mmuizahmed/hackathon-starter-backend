@@ -145,12 +145,19 @@ Leave `ADMIN_EMAIL` unset on Render if judges should use that screen.
 
 On the API host (Render, or `.env` locally) set `AI_API_KEY`. Do not put the key in the frontend.
 
-If you omit the other two, the defaults are:
+The server calls `{AI_BASE_URL}chat/completions`. If the base URL has no trailing slash, the API adds one so the last path segment is kept. `https://example.com/v1` and `https://example.com/v1/` both call `https://example.com/v1/chat/completions`.
+
+Gemini is the default when those two variables are omitted:
 
 - `AI_BASE_URL` = `https://generativelanguage.googleapis.com/v1beta/openai/`
 - `AI_MODEL` = `gemini-2.5-flash`
 
-That URL is Gemini's OpenAI-compatible chat completions endpoint. The server calls `{base}chat/completions`. Any other OpenAI-compatible host works if you set `AI_BASE_URL` and `AI_MODEL`.
+OpenCode Go is another OpenAI-compatible option:
+
+- `AI_BASE_URL` = `https://opencode.ai/inference/go/openai/v1/`
+- `AI_MODEL` = `glm-5.3-flash` (or another model that host serves)
+
+Any other OpenAI-compatible host works the same way: set `AI_BASE_URL` and `AI_MODEL`.
 
 An empty key does not stop boot. Chat then returns a short message that the assistant is not configured, with HTTP 200 and `fallback: true`. The limit is 20 calls per user per hour unless `AI_RATE_LIMIT` is set. The timeout is 15 seconds unless `AI_TIMEOUT_MS` is set.
 
