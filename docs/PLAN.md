@@ -7,7 +7,7 @@ Judges start from an empty database. Nothing in this repo inserts sample employe
 | M1 Auth and access | Foundation done | Setup, login, logout, me, change password, role guard, password gate, employee scope helper | Menus are frontend |
 | M2 Organization | Done | Settings GET/PUT, departments, designations, leave-type quotas, holidays, HR user admin. `calendar.service.js` is the shared working-day API | |
 | M3 Employees | Done | Register with a one-time temp password, search, filters, paging, employee 360, exit, CSV dry run and export | |
-| M4 Attendance | Done | Check-in and check-out, camera checks, daily board, month calendar, corrections | Payroll reads these rows |
+| M4 Attendance | Done | Check-in and check-out, camera checks, face match, daily board, month calendar, corrections | Payroll reads these rows |
 | M5 Leave | Implemented | Apply, cancel, balance, history, HR inbox with context, approve/reject, notifications, audit | |
 | M6 Payroll | Implemented | Salary history, draft and regenerate, tax, proration, checks, admin finalize, payslip PDF | |
 | M7 Dashboards | Implemented | `GET /api/analytics/admin`, `/hr`, `/me`, plus anomalies and attrition risk. Counts come from `summarizeEmployeeAttendance`. Leave and payroll widgets call those services | |

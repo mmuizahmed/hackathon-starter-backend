@@ -42,6 +42,8 @@ export function toEmployee(row) {
     gender: row.gender,
     salary: { basic: row.salary?.basic },
     userId: row.user ? row.user.toString() : null,
+    // True when a descriptor is on file. The numbers themselves are never copied out.
+    faceEnrolled: Boolean(row.faceEnrolledAt),
   };
 }
 

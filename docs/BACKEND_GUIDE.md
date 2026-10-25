@@ -126,7 +126,17 @@ One employee, one Karachi day. The second check-in is `409` `Already checked in 
 
 ## Camera check-in
 
-The same check-in route accepts `source: "camera"` with `lat`, `lng`, `accuracy`, and `faceCount`. The server rejects a face count other than 1, accuracy worse than 100 meters, or a Haversine distance outside `settings.radiusMeters`. The stored row keeps the coordinates and the distance. It does not keep a photo. A rejected camera call does not insert a row.
+The same check-in route accepts `source: "camera"` with `lat`, `lng`, `accuracy`, `faceCount`, a face `descriptor`, and `liveness.blink`. The server rejects a face count other than 1, accuracy worse than 100 meters, or a Haversine distance outside `settings.radiusMeters`. It then checks the enrolled face, described in the next section. The stored row keeps the coordinates, the distance, the match score, and `liveness: true`. It does not keep a photo or the descriptor. A rejected camera call does not insert a row. Camera check-out uses those same checks and does not change `source`.
+
+## Face matching
+
+Camera check-in compares the person in front of the camera with the face that employee enrolled earlier. The browser (a separate app) runs `@vladmandic/human` and sends a descriptor: a list of numbers, usually 1024 long, from the `faceres` model. This API never receives a photo and never stores one.
+
+Enrollment is `POST /api/face/enroll`. The numbers are saved on the employee as `faceDescriptor`. That field is hidden from normal queries (`select: false`). Responses only say whether a face is enrolled (`faceEnrolled` on employee objects, and `enrolled`, `enrolledAt`, and `model` on `GET /api/face/me`). An employee cannot replace an enrolled face. HR or an admin clears it with `DELETE /api/face/:employeeId`.
+
+On a camera punch the server also requires a blink (`liveness.blink` must be true). That is a simple liveness check. It is not a full anti-spoofing system. The server then scores the live descriptor against the stored one in `src/utils/faceMatch.js`. The math is the Human library's Euclidean match (order 2, default multiplier 25, result from 0 to 1), so a score on the server matches a score the page computed. Below `FACE_MATCH_THRESHOLD` (default 0.55) the punch is refused and nothing is written.
+
+The attendance row stores `faceMatchScore` (two decimal places) and `liveness: true`. It does not store the descriptor. Audit rows for enroll and reset record the model and the time, not the numbers. Assistant tools and prompts are not given the descriptor either. They may say that a face is enrolled. They must not repeat the numbers.
 
 ## Analytics
 

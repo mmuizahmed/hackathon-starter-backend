@@ -30,11 +30,11 @@ This repository is the API. The route contract is [docs/API.md](docs/API.md). Th
 
 ### By role
 
-**Admin.** Finish setup, edit company settings, departments, designations, leave types, and holidays. Create HR logins and reset them. Read employees, attendance, leave, and payroll. Finalize a payroll month. Read the audit log. Post announcements. See company analytics. Use the assistant.
+**Admin.** Finish setup, edit company settings, departments, designations, leave types, and holidays. Create HR logins and reset them. Read employees, attendance, leave, and payroll. Reset an enrolled face. Finalize a payroll month. Read the audit log. Post announcements. See company analytics. Use the assistant.
 
-**HR.** Register and edit employees, including CSV import and export. Run the attendance board and approve corrections. Approve or reject leave. Save salary structures and build a payroll draft. HR cannot finalize payroll. See the HR dashboard. Post announcements. Use the assistant on HR data.
+**HR.** Register and edit employees, including CSV import and export. Reset an enrolled face. Run the attendance board and approve corrections. Approve or reject leave. Save salary structures and build a payroll draft. HR cannot finalize payroll. See the HR dashboard. Post announcements. Use the assistant on HR data.
 
-**Employee.** Change their own phone and address. Web check-in and check-out. See their month calendar and request a correction. Apply for leave, cancel when the rules allow, and read balances. Download their own payslip PDF. See their personal dashboard. Use smart leave and the assistant on their own records. Read announcements aimed at them.
+**Employee.** Change their own phone and address. Enroll a face descriptor (no photo) for camera check-in. Web or camera check-in and check-out. See their month calendar and request a correction. Apply for leave, cancel when the rules allow, and read balances. Download their own payslip PDF. See their personal dashboard. Use smart leave and the assistant on their own records. Read announcements aimed at them.
 
 An employee cannot open a colleague's salary, payslip, or leave balance. That check is in the service (`assertOwnEmployee`), including when the assistant calls the same function.
 
@@ -62,7 +62,7 @@ Checklist:
 - [x] Dashboards computed on the server
 - [x] AI assistant with tools and scope checks
 - [x] Announcements, notifications, and the audit log
-- [ ] Camera check-in. The API can reject a camera body (face count must be 1, GPS accuracy within 100 meters, inside the office radius), but there is no device-camera screen, so this is not a finished feature
+- [x] Camera check-in API: one face, GPS within 100 meters, inside the office radius, a blink, and a match against the enrolled face descriptor. Photos are not stored. The camera screen is in the frontend repo.
 - [ ] Mobile APK
 
 ## Architecture
@@ -127,6 +127,7 @@ Names and purpose only. Copy from [.env.example](.env.example). Do not commit a 
 | `AI_MODEL` | No | Model name sent to that endpoint. |
 | `AI_RATE_LIMIT` | No | Assistant calls per user per hour. |
 | `AI_TIMEOUT_MS` | No | Abort a provider call after this many milliseconds. |
+| `FACE_MATCH_THRESHOLD` | No | Minimum face similarity for a camera punch, from 0 to 1. Default `0.55`. Same scale as Human `match.similarity`. |
 | `ADMIN_EMAIL` | No | With `ADMIN_PASSWORD`, creates the admin once on boot. Leave empty for the setup screen. |
 | `ADMIN_PASSWORD` | No | Used only with the boot bootstrap. |
 | `COMPANY_NAME` | No | Used only with the boot bootstrap. |

@@ -8,6 +8,7 @@ import { assertObjectId } from '../utils/objectId.js';
 import { pageData, readPage } from '../utils/page.js';
 import { addDays, karachiDateString, karachiWallTimeToUtc } from '../utils/timezone.js';
 import { recordAudit } from './audit.service.js';
+import { assertLiveFace } from './face.service.js';
 import { isWorkingDay, listWorkingDays } from './calendar.service.js';
 import { getSettings } from './settings.service.js';
 import { assertOwnEmployee, employeeScopeFilter } from './scope.service.js';
@@ -84,6 +85,8 @@ function toAttendance(row, today) {
       withinRadius: row.location?.withinRadius ?? null,
     },
     faceCount: row.faceCount ?? null,
+    faceMatchScore: row.faceMatchScore ?? null,
+    liveness: row.liveness ?? null,
     workedMinutes: row.workedMinutes ?? null,
   };
 }
@@ -150,8 +153,12 @@ export async function checkIn(actor, input, now = new Date()) {
     withinRadius: null,
   };
   let faceCount = null;
+  let faceMatchScore = null;
+  let liveness = null;
   if (source === 'camera') {
     const camera = await checkCamera(input, settings);
+    // GPS and face count are checked first. Then the enrolled descriptor and the blink.
+    const face = await assertLiveFace(employeeId, input);
     location = {
       lat: camera.lat,
       lng: camera.lng,
@@ -160,6 +167,8 @@ export async function checkIn(actor, input, now = new Date()) {
       withinRadius: camera.withinRadius,
     };
     faceCount = camera.faceCount;
+    faceMatchScore = face.faceMatchScore;
+    liveness = face.liveness;
   }
 
   const decision = await statusForPunch(now, null, date, settings);
@@ -174,6 +183,8 @@ export async function checkIn(actor, input, now = new Date()) {
       source,
       location,
       faceCount,
+      faceMatchScore,
+      liveness,
       workedMinutes: null,
     });
     await recordAudit({
@@ -182,7 +193,14 @@ export async function checkIn(actor, input, now = new Date()) {
       entity: 'Attendance',
       entityId: row._id,
       before: null,
-      after: { date, status: row.status, late: row.late, source },
+      after: {
+        date,
+        status: row.status,
+        late: row.late,
+        source,
+        faceMatchScore,
+        liveness,
+      },
     });
     return toAttendance(row, date);
   } catch (error) {
@@ -209,12 +227,23 @@ export async function checkOut(actor, input, now = new Date()) {
   if (!row?.checkIn) throw new AppError('Check in before checking out', 400);
   if (row.checkOut) throw new AppError('Already checked out today', 409);
 
+  // Camera check-out uses the same face and GPS rules. It does not change `source`.
+  let face = null;
+  if (input?.source === 'camera') {
+    await checkCamera(input, settings);
+    face = await assertLiveFace(employeeId, input);
+  }
+
   const before = { status: row.status, checkOut: row.checkOut };
   const decision = await statusForPunch(row.checkIn, now, row.date, settings);
   row.checkOut = now;
   row.status = decision.status;
   row.late = decision.late;
   row.workedMinutes = decision.workedMinutes;
+  if (face) {
+    row.faceMatchScore = face.faceMatchScore;
+    row.liveness = face.liveness;
+  }
   await row.save();
   await recordAudit({
     actorId: actor.id,
@@ -222,7 +251,13 @@ export async function checkOut(actor, input, now = new Date()) {
     entity: 'Attendance',
     entityId: row._id,
     before,
-    after: { status: row.status, late: row.late, workedMinutes: row.workedMinutes },
+    after: {
+      status: row.status,
+      late: row.late,
+      workedMinutes: row.workedMinutes,
+      faceMatchScore: face ? face.faceMatchScore : row.faceMatchScore ?? null,
+      liveness: face ? face.liveness : row.liveness ?? null,
+    },
   });
   return toAttendance(row, today);
 }

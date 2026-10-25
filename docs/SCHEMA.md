@@ -194,6 +194,9 @@ Collection `users`. `passwordHash` is `select: false`.
 | `gender` | `male`, `female`, `other`, or `undisclosed` |
 | `salary.basic` | Greater than zero. Payroll uses the salary-structure history, not only this field |
 | `user` | Login id, or null |
+| `faceDescriptor` | Array of numbers from the browser face model. `select: false`. Never a photo. Omitted from API responses |
+| `faceModel` | Model name sent at enrollment, for example `human-faceres`. Null when not enrolled |
+| `faceEnrolledAt` | Timestamp of enrollment. Null when not enrolled. API responses expose this as `faceEnrolled: true/false` |
 
 ## leaveTypes
 
@@ -228,6 +231,8 @@ One row per employee per `date` (unique index).
 | `late` | Separate from status, so a half day can still be a late arrival |
 | `source` | `web`, `camera`, or `correction` |
 | `location`, `faceCount` | Filled for a camera payload |
+| `faceMatchScore` | Camera only. Similarity from 0 to 1, rounded to 2 decimal places. The descriptor is not stored |
+| `liveness` | `true` when a camera punch passed the blink check. Otherwise null |
 | `workedMinutes` | Set on check-out |
 
 `absent` and `on_leave` are usually calculated when a board is read, not stored.

@@ -13,6 +13,7 @@ Office and attendance:
 - Weekend days and holidays (including tentative holidays) are not working days.
 - Approved leave is on_leave. A working day with no attendance and no approved leave is absent.
 - missing_checkout is a past day with a check-in and no check-out.
+- A camera check-in compares a face descriptor that the employee enrolled earlier. Never ask for, repeat, or invent a face descriptor, embedding, or photo. Tools do not return them.
 
 Leave:
 - Default quotas created at setup are Annual 14, Sick 8, Casual 10, and Unpaid with no cap.

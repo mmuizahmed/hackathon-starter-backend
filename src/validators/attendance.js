@@ -7,17 +7,30 @@ const location = z.object({
   accuracyMeters: z.number().min(0).optional(),
 }).optional();
 
-export const checkInSchema = z.object({
-  source: z.enum(['web', 'camera']).optional(),
+// The live embedding. Length is checked against the enrolled face in the service.
+const descriptor = z.array(z.number().finite()).max(4096).optional();
+const liveness = z.object({
+  blink: z.boolean(),
+}).optional();
+
+const cameraFields = {
   lat: z.number().min(-90).max(90).optional(),
   lng: z.number().min(-180).max(180).optional(),
   accuracy: z.number().min(0).optional(),
   faceCount: z.number().int().min(0).optional(),
   location,
+  descriptor,
+  liveness,
+};
+
+export const checkInSchema = z.object({
+  source: z.enum(['web', 'camera']).optional(),
+  ...cameraFields,
 });
 
 export const checkOutSchema = z.object({
   source: z.enum(['web', 'camera', 'correction']).optional(),
+  ...cameraFields,
 });
 
 export const attendanceQuerySchema = z.object({

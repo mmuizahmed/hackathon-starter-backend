@@ -289,10 +289,26 @@ test('org, employees, and attendance', { timeout: 180000 }, async (t) => {
       assert.equal(far.status, 422);
       assert.match(far.json.message, /outside the office/);
 
+      const descriptor = Array.from({ length: 64 }, () => 0.01);
+      const enrolled = await request(base, '/api/face/enroll', {
+        method: 'POST',
+        cookie: state.evaCookie,
+        body: { descriptor, model: 'human-faceres' },
+      });
+      assert.equal(enrolled.status, 201, JSON.stringify(enrolled.json));
+
       const ok = await request(base, '/api/attendance/check-in', {
         method: 'POST',
         cookie: state.evaCookie,
-        body: { source: 'camera', lat: 24.86, lng: 67.01, accuracy: 20, faceCount: 1 },
+        body: {
+          source: 'camera',
+          lat: 24.86,
+          lng: 67.01,
+          accuracy: 20,
+          faceCount: 1,
+          descriptor,
+          liveness: { blink: true },
+        },
       });
       assert.equal(ok.status, 201, JSON.stringify(ok.json));
       assert.equal(ok.json.data.source, 'camera');
