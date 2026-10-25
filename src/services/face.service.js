@@ -76,7 +76,7 @@ export async function resetFace(actor, employeeId) {
   const wasEnrolled = Boolean(existing.faceEnrolledAt);
   await Employee.updateOne(
     { _id: existing._id },
-    { $set: { faceModel: null, faceEnrolledAt: null }, $unset: { faceDescriptor: '' } },
+    { $set: { faceModel: null, faceEnrolledAt: null }, $unset: { faceDescriptor: 1 } },
   );
   await recordAudit({
     actorId: actor.id,

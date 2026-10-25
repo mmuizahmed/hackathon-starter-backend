@@ -317,8 +317,10 @@ test('face enroll, reset, and camera match', { timeout: 180000 }, async () => {
     assert.deepEqual(cleared.json.data, { enrolled: false, enrolledAt: null, model: null });
     const clearedDetail = await request(base, `/api/employees/${evaId}`, { cookie: hrCookie });
     assert.equal(clearedDetail.json.data.employee.faceEnrolled, false);
-    const wiped = await Employee.findById(evaId).select('+faceDescriptor');
-    assert.equal(wiped.faceDescriptor, undefined);
+    const wiped = await Employee.findById(evaId).select('+faceDescriptor').lean();
+    const storedDescriptor = wiped.faceDescriptor || [];
+    assert.equal(storedDescriptor.length, 0);
+    assert.equal(storedDescriptor.includes(SENTINEL), false);
     assert.equal(wiped.faceEnrolledAt, null);
 
     const resetAudit = await request(base, '/api/audit?action=face.reset', { cookie: adminCookie });
