@@ -395,7 +395,13 @@ async function buildMonth(employeeId, month, today) {
   const days = [];
   let cursor = start;
   while (cursor <= end) {
-    days.push(resolveDay(employee, cursor, facts, today));
+    // Before join or after exit the person was not on the roster. Status stays null
+    // so the calendar and its month totals do not count those days as absent.
+    if (wasEmployedOn(employee, cursor)) {
+      days.push(resolveDay(employee, cursor, facts, today));
+    } else {
+      days.push(emptyDay(cursor, facts.working.has(cursor), null));
+    }
     cursor = addDays(cursor, 1);
   }
   return days;
