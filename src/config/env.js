@@ -70,6 +70,12 @@ function parseEnv() {
     throw new Error('AI_MODEL must not be empty.');
   }
 
+  // 0..1. Camera check-in is refused when the face score is below this.
+  const faceMatchThreshold = Number((process.env.FACE_MATCH_THRESHOLD || '0.55').trim());
+  if (!Number.isFinite(faceMatchThreshold) || faceMatchThreshold < 0 || faceMatchThreshold > 1) {
+    throw new Error('FACE_MATCH_THRESHOLD must be a number from 0 to 1.');
+  }
+
   return {
     nodeEnv,
     port,
@@ -84,6 +90,7 @@ function parseEnv() {
     aiModel,
     aiRateLimit,
     aiTimeoutMs,
+    faceMatchThreshold,
   };
 }
 

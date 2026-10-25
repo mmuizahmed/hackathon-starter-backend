@@ -25,6 +25,9 @@ const attendanceSchema = new mongoose.Schema(
       withinRadius: { type: Boolean, default: null },
     },
     faceCount: { type: Number, default: null },
+    // Camera punches only. The score is 0..1 to 2 decimal places. The descriptor is not stored.
+    faceMatchScore: { type: Number, default: null },
+    liveness: { type: Boolean, default: null },
     workedMinutes: { type: Number, default: null },
   },
   { timestamps: true, collection: 'attendance' },

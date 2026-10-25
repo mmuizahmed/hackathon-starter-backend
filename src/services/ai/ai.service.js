@@ -10,7 +10,7 @@ import {
   summarySystemPrompt,
 } from './prompts.js';
 import { completeWithinTimeout } from './provider.js';
-import { runTool, summarizeToolResult, toolDefinitions } from './tools.js';
+import { omitFaceSecrets, runTool, summarizeToolResult, toolDefinitions } from './tools.js';
 
 const leaveSchema = z.object({
   type: z.string().trim().min(1),
@@ -107,11 +107,13 @@ export async function chat(user, input) {
           : 'That request could not be completed.';
         result = { refused: true, message };
       }
-      sources.push({ tool: name, args, resultSummary: summarizeToolResult(result) });
+      const safeArgs = omitFaceSecrets(args);
+      const safeResult = omitFaceSecrets(result);
+      sources.push({ tool: name, args: safeArgs, resultSummary: summarizeToolResult(safeResult) });
       messages.push({
         role: 'tool',
         tool_call_id: call.id,
-        content: JSON.stringify(result),
+        content: JSON.stringify(safeResult),
       });
     }
   }

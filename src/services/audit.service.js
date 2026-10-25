@@ -2,7 +2,7 @@ import { AuditLog } from '../models/AuditLog.js';
 import { pageData, readPage } from '../utils/page.js';
 
 // Services call this after a real change. Login and logout are not audited.
-// Do not pass passwordHash in before or after.
+// Do not pass passwordHash or a face descriptor in before or after.
 export async function recordAudit({ actorId, action, entity, entityId, before, after }) {
   await AuditLog.create({
     actor: actorId || null,

@@ -11,6 +11,7 @@ import {
 import { getLeaveBalances } from '../leave.service.js';
 
 // Each tool calls the same service function the REST route uses, with req.user.
+// Face descriptors are biometric data. Strip them before a result is returned or summarized.
 export const toolDefinitions = [
   {
     type: 'function',
@@ -106,7 +107,7 @@ export const toolDefinitions = [
     type: 'function',
     function: {
       name: 'search_employees',
-      description: 'Search employees by name, code, or email. Employees only see themselves, and not salary.',
+      description: 'Search employees by name, code, or email. Employees only see themselves, and not salary. Face descriptors are never included.',
       parameters: {
         type: 'object',
         properties: {
@@ -134,35 +135,56 @@ function withoutSalary(row) {
   return copy;
 }
 
+function isPlainObject(value) {
+  if (!value || typeof value !== 'object') return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+// Drop embedding fields from plain JSON. Leave dates and ids alone.
+export function omitFaceSecrets(value) {
+  if (Array.isArray(value)) return value.map(omitFaceSecrets);
+  if (!isPlainObject(value)) return value;
+  const copy = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (key === 'faceDescriptor' || key === 'descriptor' || key === 'embedding') continue;
+    copy[key] = omitFaceSecrets(item);
+  }
+  return copy;
+}
+
 export async function runTool(user, name, args = {}) {
   if (args.employeeId) assertOwnEmployee(user, args.employeeId);
   const filters = filtersFrom(args);
-  if (name === 'get_headcount') return getHeadcount(user, filters);
-  if (name === 'get_attendance_summary') return getAttendanceSummary(user, filters);
-  if (name === 'get_late_comers') return getLateComers(user, filters);
-  if (name === 'get_leave_summary') return getLeaveSummary(user, filters);
-  if (name === 'get_payroll_summary') return getPayrollSummary(user, filters);
-  if (name === 'get_my_leave_balance') {
+  let result;
+  if (name === 'get_headcount') result = await getHeadcount(user, filters);
+  else if (name === 'get_attendance_summary') result = await getAttendanceSummary(user, filters);
+  else if (name === 'get_late_comers') result = await getLateComers(user, filters);
+  else if (name === 'get_leave_summary') result = await getLeaveSummary(user, filters);
+  else if (name === 'get_payroll_summary') result = await getPayrollSummary(user, filters);
+  else if (name === 'get_my_leave_balance') {
     if (!user.employeeId && user.role === 'employee') {
       throw new AppError('No employee profile is linked to this login', 403);
     }
-    return getLeaveBalances(user, { employeeId: args.employeeId });
-  }
-  if (name === 'search_employees') {
+    result = await getLeaveBalances(user, { employeeId: args.employeeId });
+  } else if (name === 'search_employees') {
     const page = await listEmployees(user, {
       search: args.search,
       departmentId: user.role === 'employee' ? undefined : args.departmentId,
       limit: 10,
     });
     const items = user.role === 'employee' ? page.items.map(withoutSalary) : page.items;
-    return { items, total: page.total };
+    result = { items, total: page.total };
+  } else {
+    throw new AppError(`Unknown tool ${name}`, 400);
   }
-  throw new AppError(`Unknown tool ${name}`, 400);
+  return omitFaceSecrets(result);
 }
 
 export function summarizeToolResult(result) {
-  if (result?.refused) return String(result.message || 'Refused');
-  const text = JSON.stringify(result);
+  const safe = omitFaceSecrets(result);
+  if (safe?.refused) return String(safe.message || 'Refused');
+  const text = JSON.stringify(safe);
   if (text.length <= 500) return text;
   return `${text.slice(0, 500)}…`;
 }

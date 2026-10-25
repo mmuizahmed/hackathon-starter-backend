@@ -103,6 +103,9 @@ Auth, organization, employees, attendance, leave, payroll, payslips, announcemen
 | PATCH | `/api/employees/:id` | HR, employee (own phone and address) |
 | POST | `/api/employees/import` | HR |
 | GET | `/api/employees/export` | HR |
+| GET | `/api/face/me` | Employee |
+| POST | `/api/face/enroll` | Employee (self) |
+| DELETE | `/api/face/:employeeId` | HR, admin |
 | POST | `/api/attendance/check-in` | HR, employee |
 | POST | `/api/attendance/check-out` | HR, employee |
 | GET | `/api/attendance` | Admin, HR, employee (own) |
@@ -169,9 +172,12 @@ Section 2 lets admin **read** employees, attendance, leave, and payroll. Section
 | Leave types | Manage | View | View |
 | Create HR login, deactivate, reset password | Yes | No | No |
 | Register or edit an employee | View | Manage | Own phone and address |
+| Enroll own face | No | No | Yes, once |
+| Reset a face enrollment | Yes | Yes | No |
 | Directory and employee 360 | All | All | Own |
 | CSV import and export | No | Yes | No |
 | Web check-in and check-out | No | Own, if they have an employee id | Own |
+| Camera check-in and check-out | No | Own, if they have an employee id and an enrolled face | Own, after enroll |
 | Attendance daily board | Yes | Yes | No |
 | Attendance month calendar | Any employee | Any employee | Own |
 | Attendance correction | View | Approve | Request own |
@@ -456,6 +462,8 @@ This creates the employee and a user with the same email, role `employee`, `must
 
 The list `search` matches name, code, or email on the server. Employees only receive their own row. The filter uses the employee document `_id`, because that collection has no field named `employee`.
 
+Every employee object (list, create, update, and the `employee` inside the 360 view) includes `faceEnrolled` (boolean). The face descriptor is never included.
+
 CSV columns: `code,name,email,phone,address,department,designation,joinDate,status,gender,basicSalary`.
 
 Department and designation are matched by name, ignoring case. Checks: required code, name, email, department, designation, join date, and salary; unique code and email in the file and in the database; email shape; a known department and designation; a real `YYYY-MM-DD` date; salary greater than 0 (and at least 1); status `active` or `probation`.
@@ -476,6 +484,38 @@ Dry run is the safe default. The write runs only when the query is exactly `dryR
 
 A commit adds `created` and `temporaryPasswords`: `[{ "row": 2, "email": "eva@example.com", "temporaryPassword": "Temp-…" }]`. Those passwords are returned once.
 
+## Face enrollment — implemented
+
+The browser runs `@vladmandic/human` and sends a descriptor (the `faceres` embedding: an array of numbers, usually length 1024). This API never accepts or stores a photo.
+
+| Method | Path | Who | Body / result |
+| --- | --- | --- | --- |
+| GET | `/api/face/me` | Employee | `{ enrolled, enrolledAt, model }` |
+| POST | `/api/face/enroll` | Employee, for the linked profile only | `{ descriptor, model }` |
+| DELETE | `/api/face/:employeeId` | HR or admin | `{ employeeId, enrolled: false }` |
+
+`GET /api/face/me` when nobody has enrolled:
+
+```json
+{ "enrolled": false, "enrolledAt": null, "model": null }
+```
+
+After enrollment, `enrolled` is true, `enrolledAt` is an ISO timestamp, and `model` is the string that was stored (for example `human-faceres`).
+
+`POST /api/face/enroll` body:
+
+```json
+{ "descriptor": [0.01, 0.02], "model": "human-faceres" }
+```
+
+`descriptor` is 64 to 2048 finite numbers. `model` is a non-empty string up to 64 characters. The numbers are stored on the employee as `faceDescriptor` (`select: false`), plus `faceModel` and `faceEnrolledAt`. The response is `201` and the same shape as `GET /api/face/me`. It does not echo the descriptor.
+
+A second enroll is `409` `Face already enrolled. Ask HR to reset it.` The stored descriptor is left unchanged. HR and admin are `403` on enroll; only the employee role enrolls, and only for themselves.
+
+`DELETE /api/face/:employeeId` clears `faceDescriptor`, `faceModel`, and `faceEnrolledAt`. An unknown employee is `404` `Employee was not found`. An employee who calls it is `403`.
+
+Both enroll and reset write an audit row (`face.enroll`, `face.reset`) with the model and enrolled flag only. The descriptor is not copied into the audit log.
+
 ## M4 Attendance — implemented
 
 Stored statuses: `present`, `late`, `half_day`, `missing_checkout`. `absent` and `on_leave` are calculated when the board or calendar is read. The enum allows saving them if a correction needs it.
@@ -495,12 +535,13 @@ Rules:
 - Working days come from `calendar.service.js`: `settings.weekend` and holidays, tentative included.
 - Check-in is allowed on a weekend or holiday. The punches are stored with `status: "present"` and `late: false`. A short visit on a non-working day is not `half_day`, and a late arrival that day is not `late`. Payroll only counts working days, so that row is not a deduction.
 - Check-out closes today's open row. If today has no check-in, it closes yesterday's open row so a shift can cross midnight. Check-out does not change `source`.
+- A camera check-out (`source: "camera"`) runs the same GPS, blink, and face-match checks as camera check-in. On success it updates `faceMatchScore` and sets `liveness` to true. It still does not change `source`.
 - A settings change does not recompute old `late` or `half_day` rows.
 
 | Method | Path | Who | Body / query |
 | --- | --- | --- | --- |
 | POST | `/api/attendance/check-in` | HR or employee who has `employeeId`. Admin 403 | `{ "source": "web" }` or camera body below. `source` defaults to `web` |
-| POST | `/api/attendance/check-out` | Same | Body may be `{}` |
+| POST | `/api/attendance/check-out` | Same | `{}` for a normal check-out. Camera check-out uses the camera body below |
 | GET | `/api/attendance` | Admin and HR: all. Employee: own rows | `from`, `to`, `employeeId`, `departmentId`, `status`, `page`, `limit` |
 | GET | `/api/attendance/board` | Admin, HR. Employee 403 | `date` (default today), `departmentId` |
 | GET | `/api/attendance/calendar` | Employee: own month. Admin and HR must pass `employeeId` | `month=YYYY-MM` (default this month), `employeeId` |
@@ -517,29 +558,44 @@ The month calendar returns `{ month, employeeId, days }`. Each day has `date`, `
 Camera check-in uses the same `POST /api/attendance/check-in`. Send either the flat body or the nested one:
 
 ```json
-{ "source": "camera", "lat": 24.86, "lng": 67.01, "accuracy": 20, "faceCount": 1 }
+{
+  "source": "camera",
+  "lat": 24.86,
+  "lng": 67.01,
+  "accuracy": 20,
+  "faceCount": 1,
+  "descriptor": [0.01, 0.02],
+  "liveness": { "blink": true }
+}
 ```
 
 ```json
 {
   "source": "camera",
   "location": { "lat": 24.86, "lng": 67.01, "accuracyMeters": 20 },
-  "faceCount": 1
+  "faceCount": 1,
+  "descriptor": [0.01, 0.02],
+  "liveness": { "blink": true }
 }
 ```
 
-`accuracy` and `accuracyMeters` are meters. The server computes the Haversine distance to `officeLat` / `officeLng`. It stores `location` (including `distanceMeters` and `withinRadius`) and `faceCount`. It never stores a photo.
+`accuracy` and `accuracyMeters` are meters. The server computes the Haversine distance to `officeLat` / `officeLng`. It stores `location` (including `distanceMeters` and `withinRadius`), `faceCount`, `faceMatchScore`, and `liveness: true`. It does not store the descriptor or a photo. `descriptor` on a `web` punch is ignored.
 
-A failed camera check writes nothing. `422` messages:
+Face checks use the same order on camera check-in and camera check-out. A failed camera check writes nothing (a failed camera check-out leaves the open row unchanged).
 
-| Check | Message |
-| --- | --- |
-| `faceCount` is not 1 | `Exactly one face must be in the frame` |
-| accuracy greater than 100 | `GPS accuracy must be 100 meters or better` |
-| distance greater than `radiusMeters` | `You are outside the office area` |
-| office lat/lng is missing | `Office location is not set` |
+| Order | Check | Status | Message |
+| --- | --- | --- | --- |
+| 1 | `faceCount` is not 1 | 422 | `Exactly one face must be in the frame` |
+| 2 | accuracy greater than 100 | 422 | `GPS accuracy must be 100 meters or better` |
+| 3 | distance greater than `radiusMeters` | 422 | `You are outside the office area` |
+| 4 | office lat/lng is missing | 422 | `Office location is not set` |
+| 5 | employee has no enrollment | 422 | `Enroll your face first` |
+| 6 | `liveness.blink` is not `true` | 422 | `Blink check failed` |
+| 7 | `descriptor` is missing | 422 | `Face descriptor is required` |
+| 8 | descriptor length is not the enrolled length | 422 | `Face descriptor length does not match the enrolled face` |
+| 9 | similarity below `FACE_MATCH_THRESHOLD` | 422 | `Face does not match the enrolled face` |
 
-Missing camera fields are `400` `Camera check-in needs lat, lng, accuracy, and faceCount`.
+Missing `lat`, `lng`, `accuracy`, or `faceCount` is `400` `Camera check-in needs lat, lng, accuracy, and faceCount`. A descriptor that is not a list of finite numbers is `400` validation. Similarity is `src/utils/faceMatch.js`, the same formula as `@vladmandic/human` `match.similarity` (Euclidean, order 2, multiplier 25 by default, result 0..1). A score below the threshold is rejected. An equal score is accepted. The default threshold is `0.55` (`FACE_MATCH_THRESHOLD`). `faceMatchScore` is that score rounded to 2 decimal places.
 
 Corrections: `date` cannot be in the future. At least one of `requestedCheckIn` and `requestedCheckOut` is required. A time is `HH:mm` in Karachi or an ISO timestamp. HR review with `approved` updates or creates the attendance row for that employee and date, sets `source` to `correction`, and recalculates status from the **current** settings. `rejected` leaves attendance unchanged. The review response is `{ correction, attendance }`. Both the request and the review are audited. A second review is `409` `Correction has already been reviewed`.
 
@@ -563,6 +619,8 @@ Attendance item:
     "withinRadius": null
   },
   "faceCount": null,
+  "faceMatchScore": null,
+  "liveness": null,
   "workedMinutes": null
 }
 ```
@@ -984,9 +1042,9 @@ Admin only. Query: `page`, `limit`, `action`, `entity`, `entityId`, `actor` (use
 
 There is no POST, PATCH, or DELETE. Services call `recordAudit` in `src/services/audit.service.js`.
 
-Actions written today: `setup.complete`, `user.create`, `user.update`, `user.password_change`, `settings.update`, `department.create`, `department.update`, `department.delete`, `designation.create`, `designation.update`, `designation.delete`, `leaveType.create`, `leaveType.update`, `leaveType.delete`, `holiday.create`, `holiday.update`, `holiday.delete`, `employee.create`, `employee.update`, `attendance.check_in`, `attendance.check_out`, `attendanceCorrection.create`, `attendanceCorrection.review`, `leave.apply`, `leave.cancel`, `leave.review`, `salary.update`, `payroll.generate`, `payroll.finalize`, `announcement.create`, `announcement.update`.
+Actions written today: `setup.complete`, `user.create`, `user.update`, `user.password_change`, `settings.update`, `department.create`, `department.update`, `department.delete`, `designation.create`, `designation.update`, `designation.delete`, `leaveType.create`, `leaveType.update`, `leaveType.delete`, `holiday.create`, `holiday.update`, `holiday.delete`, `employee.create`, `employee.update`, `face.enroll`, `face.reset`, `attendance.check_in`, `attendance.check_out`, `attendanceCorrection.create`, `attendanceCorrection.review`, `leave.apply`, `leave.cancel`, `leave.review`, `salary.update`, `payroll.generate`, `payroll.finalize`, `announcement.create`, `announcement.update`.
 
-`payroll.finalize` stores `override` and `reason` when Admin locked a month that failed the checks. Temporary passwords are not written to the log. Snapshots do not include password hashes.
+`face.enroll` and `face.reset` record the model name and whether a face is enrolled. They do not record the descriptor. `payroll.finalize` stores `override` and `reason` when Admin locked a month that failed the checks. Temporary passwords are not written to the log. Snapshots do not include password hashes.
 
 ### Announcements — implemented
 

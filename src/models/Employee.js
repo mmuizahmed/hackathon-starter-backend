@@ -37,6 +37,11 @@ const employeeSchema = new mongoose.Schema(
       basic: { type: Number, required: true, min: 1 },
     },
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    // Numeric face embedding from the browser. Never a photo.
+    // select:false keeps it out of list, detail, and assistant queries.
+    faceDescriptor: { type: [Number], select: false },
+    faceModel: { type: String, default: null, trim: true },
+    faceEnrolledAt: { type: Date, default: null },
   },
   { timestamps: true, collection: 'employees' },
 );
