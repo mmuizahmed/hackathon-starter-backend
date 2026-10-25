@@ -490,7 +490,7 @@ Rules:
 - Late when check-in is **after** `officeStart + graceMinutes`. With start `09:00` and grace `15`, `09:15` is `present` and `09:16` is `late`.
 - `half_day` when worked minutes are under `halfDayHours * 60` (default 5 hours). Half day wins over `present` / `late` as the status. Keep `late` true if the arrival was late.
 - `missing_checkout` is applied **on read** for a past day (`date` before today in Karachi) that has a check-in and no check-out. Today stays `present` or `late` until the day ends. The stored row is not rewritten.
-- `absent` is applied **on read** for a working day on or before today with no attendance row and no approved leave. Future days stay `status: null`. Weekends and holidays are not marked absent.
+- `absent` is applied **on read** for a working day on or before today with no attendance row and no approved leave. Future days stay `status: null`. Weekends and holidays are not marked absent. On the month calendar, a day before `joinDate` or after `exitDate` is `status: null` and is not counted in the month's absent total. The daily board and payroll already skip those days.
 - `on_leave` is applied on read when an approved `LeaveRequest` covers the date (`startDate <= date <= endDate`, status `approved`). The leave model is read directly. If both a row and leave exist, the attendance row wins.
 - Working days come from `calendar.service.js`: `settings.weekend` and holidays, tentative included.
 - Check-in is allowed on a weekend or holiday. The punches are stored with `status: "present"` and `late: false`. A short visit on a non-working day is not `half_day`, and a late arrival that day is not `late`. Payroll only counts working days, so that row is not a deduction.
