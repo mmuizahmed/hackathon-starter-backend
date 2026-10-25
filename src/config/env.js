@@ -56,7 +56,7 @@ function parseEnv() {
   // The browser never receives the key. Empty is allowed so the API still boots.
   const aiApiKey = (process.env.AI_API_KEY || '').trim();
   const aiBaseUrl = (process.env.AI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/openai/').trim();
-  const aiModel = (process.env.AI_MODEL || 'gemini-2.5-flash').trim();
+  const aiModel = (process.env.AI_MODEL || 'gemini-3.5-flash').trim();
   const aiRateLimit = Number((process.env.AI_RATE_LIMIT || '20').trim());
   const aiTimeoutMs = Number((process.env.AI_TIMEOUT_MS || '15000').trim());
   const normalizedAiBaseUrl = normalizeAiBaseUrl(aiBaseUrl);
